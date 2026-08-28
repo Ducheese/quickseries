@@ -1,4 +1,6 @@
-# QuickSeries（快速动作插件系列）
+[English](README_EN.md) | 中文
+
+# QuickSeries（快速战斗系列）
 
 针对 CS:S 引擎特性打造的快速战斗动作插件套件，包含 **QuickMelee（快速近战）** 与 **QuickGrenade（快速手雷）** 两个核心插件。
 
@@ -14,7 +16,7 @@
 - **防打断保护**：挥刀期间拦截地面捡枪自动切枪，死亡、冻结期与拆弹阶段安全拦截。
 
 ### 2. QuickGrenade（快速手雷引雷与投掷）
-- **长按引雷与瞄准**：支持 `+quickfrag` / `+quicksmoke` / `+quickflash` 物理长按，第一人称视图模型持续保持拔销待发姿势，可在引雷状态下自由跑位、跳跃与瞄准。
+- **长按引雷与瞄准**：支持 `+sm_quickfrag` / `+sm_quicksmoke` / `+sm_quickflash` 物理长按，第一人称视图模型持续保持拔销待发姿势，可在引雷状态下自由跑位、跳跃与瞄准。
 - **松手即丢**：松开按键瞬间触发丢雷动画（`ACT_VM_THROW` + 人物 3D 投掷动作），并在实体生成后无缝切回原武器。
 - **点按保护**：设有最短引雷时间保护（`min_pull_time`），彻底杜绝极快轻点按键时手臂抽搐问题。
 
@@ -24,7 +26,7 @@
 
 两款插件作为可选依赖相互协同，原生处理动作冲突：
 
-1. **手雷引雷中按挥刀**：当玩家正长按 `+quickfrag` 引雷瞄准时，若突然遭遇近身敌人并按下 `sm_quickmelee`，插件会自动安全调用 `QuickGrenade_Cancel` 取消丢雷，并**立即无缝转入快速挥刀**。
+1. **手雷引雷中按挥刀**：当玩家正长按 `+sm_quickfrag` 引雷瞄准时，若突然遭遇近身敌人并按下 `sm_quickmelee`，插件会自动安全调用 `QuickGrenade_Cancel` 取消丢雷，并**立即无缝转入快速挥刀**。
 2. **挥刀中按丢雷**：当玩家正处于挥刀动作（~0.3s）时，若按下丢雷按键，插件会**自动拦截丢雷请求**，避免挥刀后摇与手雷掏取动作产生逻辑与动画冲突。
 3. **丢雷脱手阶段**：手雷已松手正在飞出判定阶段（0.1s~0.2s），挥刀会被安全拦截，确保手雷实体必定成功发射。
 
@@ -64,14 +66,14 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 ### QuickMelee
 | 功能 | 指令 | 推荐绑定 |
 | :--- | :--- | :--- |
-| **快速近战** | `sm_quickmelee` | `bind f sm_quickmelee` |
+| **快速近战** | `sm_quickmelee` | `bind mouse3 sm_quickmelee` |
 
 ### QuickGrenade
 | 手雷类型 | 对应武器 | 推荐长按绑定（按住引雷，松手丢雷） | 单次点按指令 |
 | :--- | :--- | :--- | :--- |
-| **高爆手雷** | `weapon_hegrenade` | `bind g +quickfrag` | `sm_quickfrag` / `sm_quickhe` |
-| **烟雾弹** | `weapon_smokegrenade` | `bind v +quicksmoke` | `sm_quicksmoke` |
-| **闪光弹** | `weapon_flashbang` | `bind c +quickflash` | `sm_quickflash` |
+| **高爆手雷** | `weapon_hegrenade` | `bind v +sm_quickfrag` / `+sm_quickhe` | `sm_quickfrag` / `sm_quickhe` |
+| **烟雾弹** | `weapon_smokegrenade` | `bind v +sm_quicksmoke` | `sm_quicksmoke` |
+| **闪光弹** | `weapon_flashbang` | `bind v +sm_quickflash` | `sm_quickflash` |
 
 ---
 
