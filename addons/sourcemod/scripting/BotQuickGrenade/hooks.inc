@@ -1,4 +1,4 @@
-﻿#if defined _botquickgrenade_hooks_included
+#if defined _botquickgrenade_hooks_included
   #endinput
 #endif
 #define _botquickgrenade_hooks_included
@@ -14,6 +14,14 @@ stock void RegisterBotQuickGrenadeHooks()
     HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_hurt", Event_PlayerHurt);
     HookEvent("weapon_fire", Event_WeaponFire);
+
+    HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
+    HookEvent("round_freeze_end", Event_RoundStart, EventHookMode_PostNoCopy);
+    HookEvent("bomb_planted", Event_BombPlanted);
+    HookEvent("bomb_defused", Event_BombDefused, EventHookMode_PostNoCopy);
+    HookEvent("bomb_exploded", Event_BombDefused, EventHookMode_PostNoCopy);
+    HookEvent("bomb_dropped", Event_BombDropped);
+    HookEvent("bomb_pickup", Event_BombPickup);
 
     AddNormalSoundHook(Hook_NormalSound);
 
@@ -49,9 +57,68 @@ public Action Hook_NormalSound(int clients[64], int &numClients, char sample[PLA
 // 游戏事件
 //========================================================================================
 
+public void Event_RoundStart(Handle event, const char[] name, bool dontBroadcast)
+{
+    ResetC4State();
+    ClearAllMemory();
+}
+
+public void Event_BombPlanted(Handle event, const char[] name, bool dontBroadcast)
+{
+    float pos[3];
+    pos[0] = GetEventFloat(event, "x");
+    pos[1] = GetEventFloat(event, "y");
+    pos[2] = GetEventFloat(event, "z");
+
+    if (pos[0] == 0.0 && pos[1] == 0.0 && pos[2] == 0.0)
+    {
+        int bombEnt = FindEntityByClassname(-1, "planted_c4");
+        if (bombEnt > 0 && IsValidEntity(bombEnt))
+        {
+            GetEntPropVector(bombEnt, Prop_Data, "m_vecAbsOrigin", pos);
+        }
+    }
+
+    ProcessBombPlanted(pos);
+    LogDebug("\x04[BotQG - C4]\x01 C4 已安放于坐标 (%.0f, %.0f, %.0f)", pos[0], pos[1], pos[2]);
+}
+
+public void Event_BombDefused(Handle event, const char[] name, bool dontBroadcast)
+{
+    ResetC4State();
+}
+
+public void Event_BombDropped(Handle event, const char[] name, bool dontBroadcast)
+{
+    int ent = GetEventInt(event, "entindex");
+    float pos[3];
+    if (ent > 0 && IsValidEntity(ent))
+    {
+        GetEntPropVector(ent, Prop_Data, "m_vecAbsOrigin", pos);
+    }
+    else
+    {
+        int planter = GetClientOfUserId(GetEventInt(event, "userid"));
+        if (planter > 0 && IsClientInGame(planter))
+        {
+            GetClientAbsOrigin(planter, pos);
+        }
+    }
+
+    ProcessBombDropped(pos);
+    LogDebug("\x04[BotQG - C4]\x01 C4 已掉落在地 (%.0f, %.0f, %.0f)", pos[0], pos[1], pos[2]);
+}
+
+public void Event_BombPickup(Handle event, const char[] name, bool dontBroadcast)
+{
+    ProcessBombPickup();
+    LogDebug("\x04[BotQG - C4]\x01 掉落的 C4 已被拾起");
+}
+
 public void Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 {
     int client = GetClientOfUserId(GetEventInt(event, "userid"));
+
     if (client < 1 || client > MaxClients || !IsClientInGame(client)) return;
 
     if (IsFakeClient(client))
@@ -120,21 +187,33 @@ public Action Timer_GiveBotGrenades(Handle timer, int client)
 
     for (int i = 0; i < sizeof(grenades); i++)
     {
-        GivePlayerItem(client, grenades[i]);
-
-        for (int slot = 3; slot <= 7; slot++)
+        int wep = GivePlayerItem(client, grenades[i]);
+        if (wep <= 0 || !IsValidEntity(wep))
         {
-            int wep = GetPlayerWeaponSlot(client, slot);
-            if (wep <= 0 || !IsValidEntity(wep)) continue;
+            // 若身上已存在该类名手雷，遍历背包获取其实体
+            for (int w = 0; w < 48; w++)
+            {
+                int myWep = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", w);
+                if (myWep > 0 && IsValidEntity(myWep))
+                {
+                    char cls[32];
+                    GetEntityClassname(myWep, cls, sizeof(cls));
+                    if (StrEqual(cls, grenades[i], false))
+                    {
+                        wep = myWep;
+                        break;
+                    }
+                }
+            }
+        }
 
-            char cls[32];
-            GetEntityClassname(wep, cls, sizeof(cls));
-            if (!StrEqual(cls, grenades[i], false)) continue;
-
+        if (wep > 0 && IsValidEntity(wep))
+        {
             int ammoType = GetEntProp(wep, Prop_Send, "m_iPrimaryAmmoType");
             if (ammoType >= 0)
+            {
                 SetEntProp(client, Prop_Send, "m_iAmmo", ammo, _, ammoType);
-            break;
+            }
         }
     }
 
@@ -170,63 +249,107 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse,
 }
 
 //========================================================================================
-// 主思考循环
+// 主思考循环：高爆手雷 (HE) 与 智能战术烟雾弹 (Smoke)
 //========================================================================================
 
 public Action Timer_BotThink(Handle timer)
 {
     if (!GetConVarBool(cvarEnable)) return Plugin_Continue;
 
-    bool debug = GetConVarBool(cvarDebug);
+    bool visualize = GetConVarBool(cvarDebug);
+    float now = GetGameTime();
+
+    static int s_iThinkTick = 0;
+    s_iThinkTick++;
 
     for (int bot = 1; bot <= MaxClients; bot++)
     {
         if (!IsClientInGame(bot) || !IsFakeClient(bot) || !IsPlayerAlive(bot))
             continue;
 
+        // 错峰分片轮询：将全服 Bot 平摊至 5 帧周期内执行，平滑 CPU 射线计算负载
+        if ((bot % 5) != (s_iThinkTick % 5))
+            continue;
+
         // 1. 刷新视觉感知
         UpdateBotVision(bot);
 
-        // 2. 检查投雷独立冷却
-        if (GetGameTime() - g_fLastThrowTime[bot] < GRENADE_COOLDOWN)
-            continue;
-
-        // 3. 跨插件防冲突：若正在执行快速手雷动作，不重复触发
+        // 2. 跨插件防冲突：若正在执行快速手雷/近战动作，不重复触发
         if (GetFeatureStatus(FeatureType_Native, "QuickGrenade_IsCombat") == FeatureStatus_Available
             && QuickGrenade_IsCombat(bot))
             continue;
 
-        // 4. 检查背包是否有高爆雷
-        if (!BotHasGrenade(bot, "weapon_hegrenade"))
-            continue;
+        bool threwGrenade = false;
 
-        // 5. 战术与抛物线综合评估
-        float throwAngles[3], landPos[3];
-        int target = FindTargetAndComputeAngles(bot, throwAngles, landPos, debug);
-
-        if (target > 0)
+        //================================================================================
+        // 支线 A：高爆手雷（HE Grenade）掩体高抛
+        //================================================================================
+        if (now - g_fLastThrowTime[bot] >= GRENADE_COOLDOWN && BotHasGrenade(bot, "weapon_hegrenade"))
         {
-            // 锁定朝向
-            g_bAngleOverride[bot]     = true;
-            g_fOverrideAngles[bot][0] = throwAngles[0];
-            g_fOverrideAngles[bot][1] = throwAngles[1];
-            g_fOverrideAngles[bot][2] = 0.0;
-            g_fOverrideExpiry[bot]    = GetGameTime() + ANGLE_OVERRIDE_DUR;
+            float throwAngles[3], landPos[3];
+            int target = FindTargetAndComputeAngles(bot, throwAngles, landPos, visualize);
 
-            // 瞬间切一次角度
-            TeleportEntity(bot, NULL_VECTOR, g_fOverrideAngles[bot], NULL_VECTOR);
-            SetEntPropFloat(bot, Prop_Send, "m_angEyeAngles[0]", throwAngles[0]);
-            SetEntPropFloat(bot, Prop_Send, "m_angEyeAngles[1]", throwAngles[1]);
-
-            // 触发快速手雷
-            if (GetFeatureStatus(FeatureType_Native, "QuickGrenade_Trigger") == FeatureStatus_Available)
+            if (target > 0)
             {
-                if (QuickGrenade_Trigger(bot, "weapon_hegrenade", false))
-                {
-                    g_fLastThrowTime[bot] = GetGameTime();
+                // 锁定朝向
+                g_bAngleOverride[bot]     = true;
+                g_fOverrideAngles[bot][0] = throwAngles[0];
+                g_fOverrideAngles[bot][1] = throwAngles[1];
+                g_fOverrideAngles[bot][2] = 0.0;
+                g_fOverrideExpiry[bot]    = now + ANGLE_OVERRIDE_DUR;
 
-                    LogDebug("\x04[BotQG - 投掷]\x01 Bot \x03%N\x01 朝掩体后 \x05%N\x01 触发高抛砸雷! (Pitch: \x04%.1f°\x01, Yaw: \x04%.1f°\x01)", 
-                        bot, target, throwAngles[0], throwAngles[1]);
+                TeleportEntity(bot, NULL_VECTOR, g_fOverrideAngles[bot], NULL_VECTOR);
+                SetEntPropFloat(bot, Prop_Send, "m_angEyeAngles[0]", throwAngles[0]);
+                SetEntPropFloat(bot, Prop_Send, "m_angEyeAngles[1]", throwAngles[1]);
+
+                if (GetFeatureStatus(FeatureType_Native, "QuickGrenade_Trigger") == FeatureStatus_Available)
+                {
+                    if (QuickGrenade_Trigger(bot, "weapon_hegrenade", false))
+                    {
+                        g_fLastThrowTime[bot] = now;
+                        threwGrenade = true;
+
+                        LogDebug("\x04[BotQG - 投掷]\x01 Bot \x03%N\x01 朝掩体后 \x05%N\x01 触发高抛砸雷! (Pitch: \x04%.1f°\x01, Yaw: \x04%.1f°\x01)",
+                            bot, target, throwAngles[0], throwAngles[1]);
+                    }
+                }
+            }
+        }
+
+        //================================================================================
+        // 支线 B：智能战术烟雾弹（Smoke Grenade）
+        // （C4 拆下包掩护 / 残血自保脚底烟 / 弹夹耗尽视线中点烟）
+        //================================================================================
+        if (!threwGrenade && GetConVarBool(cvarSmokeEnable)
+            && (now - g_fLastSmokeThrowTime[bot] >= SMOKE_COOLDOWN)
+            && BotHasGrenade(bot, "weapon_smokegrenade"))
+        {
+            float smokeAngles[3], smokeLandPos[3];
+            char smokeReason[128];
+            bool canSmoke = FindSmokeTacticalTarget(bot, smokeAngles, smokeLandPos, smokeReason, sizeof(smokeReason), visualize);
+
+            if (canSmoke)
+            {
+                // 锁定朝向
+                g_bAngleOverride[bot]     = true;
+                g_fOverrideAngles[bot][0] = smokeAngles[0];
+                g_fOverrideAngles[bot][1] = smokeAngles[1];
+                g_fOverrideAngles[bot][2] = 0.0;
+                g_fOverrideExpiry[bot]    = now + ANGLE_OVERRIDE_DUR;
+
+                TeleportEntity(bot, NULL_VECTOR, g_fOverrideAngles[bot], NULL_VECTOR);
+                SetEntPropFloat(bot, Prop_Send, "m_angEyeAngles[0]", smokeAngles[0]);
+                SetEntPropFloat(bot, Prop_Send, "m_angEyeAngles[1]", smokeAngles[1]);
+
+                if (GetFeatureStatus(FeatureType_Native, "QuickGrenade_Trigger") == FeatureStatus_Available)
+                {
+                    if (QuickGrenade_Trigger(bot, "weapon_smokegrenade", false))
+                    {
+                        g_fLastSmokeThrowTime[bot] = now;
+
+                        LogDebug("\x04[BotQG - 烟雾]\x01 Bot \x03%N\x01 触发战术封烟! (原因: \x05%s\x01, Pitch: \x04%.1f°\x01, Yaw: \x04%.1f°\x01)",
+                            bot, smokeReason, smokeAngles[0], smokeAngles[1]);
+                    }
                 }
             }
         }

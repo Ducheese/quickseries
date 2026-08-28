@@ -1,4 +1,4 @@
-﻿#if defined _botquickgrenade_commands_included
+#if defined _botquickgrenade_commands_included
   #endinput
 #endif
 #define _botquickgrenade_commands_included
@@ -34,6 +34,18 @@ stock void RegisterBotQuickGrenadeCommands()
         "sm_botqg_check_friendly", "1",
         "安全检查：落点附近有存活队友时禁止丢雷，防止误伤队友：1=启用，0=禁用",
         FCVAR_NOTIFY, true, 0.0, true, 1.0
+    );
+
+    cvarSmokeEnable = CreateConVar(
+        "sm_botqg_smoke_enable", "1",
+        "是否启用 Bot 智能战术烟雾弹 AI（1：启用；0：禁用）",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0
+    );
+
+    cvarSmokeHp = CreateConVar(
+        "sm_botqg_smoke_hp", "35",
+        "残血脚底自保烟触发血量阈值（HP <= 设定值时触发）",
+        FCVAR_NOTIFY, true, 1.0, true, 100.0
     );
 
     cvarBulletScale = CreateConVar(

@@ -22,13 +22,13 @@
 #define GRENADE_COOLDOWN            12.0    // 单个 Bot 丢雷后的独立冷却时间（秒）
 
 // --- 仰角搜索范围与步频 ---
-#define PITCH_MIN                  -80.0    // 最大仰角（向天空高抛，负数为仰角）
-#define PITCH_MAX                   60.0    // 最大俯角（向低处投掷，正数为俯角）
-#define PITCH_STEP_COARSE           7.0     // 粗搜步长（度）
+#define PITCH_MIN                  -50.0    // 最大高抛仰角（向天空高抛，负数为仰角，收敛至 -50° 防止触碰天顶空气墙）
+#define PITCH_MAX                   50.0    // 最大俯角（向低处投掷，限制在 20° 防止向下砸地自炸）
+#define PITCH_STEP_COARSE           6.0     // 粗搜步长（度）
 #define PITCH_STEP_FINE             1.0     // 细搜步长（度，在粗搜最优结果附近精化）
 
 // --- 感知与记忆系统参数 ---
-#define BOT_THINK_INTERVAL          1.0     // Bot AI 主思考与扫描循环间隔（秒）
+#define BOT_THINK_INTERVAL          0.2     // Bot AI 主思考与扫描循环间隔（0.2s 搭配 5 帧错峰轮询，单 Bot 等效 1.0s 周期，彻底消除同 Tick 物理射线尖峰）
 #define MEMORY_DURATION             10.0    // 敌人最后暴露坐标（Last Known Position）记忆有效期（算是在假设这段时间内，敌人不会转点特别远）
 
 #define BOT_FOV_HALF                60.0    // Bot 视野半角（度，总视锥 120°）
@@ -45,6 +45,14 @@
 #define TEAMMATE_SAFETY_RADIUS      220.0   // 队友防误伤安全半径（若爆炸点该范围内有存活队友则终止投雷）
 #define ANGLE_OVERRIDE_DUR          1.5     // 投雷动作期间强制覆盖视角锁定的持续时间（秒）
 
+// --- 烟雾弹战术参数 ---
+#define SMOKE_HEALTH_THRESHOLD      35      // 残血自保脚底烟触发血量阈值 (HP <= 35)
+#define SMOKE_COOLDOWN              15.0    // 单个 Bot 投掷烟雾弹的独立冷却时间（秒）
+#define SMOKE_INTERPOLATION_RATIO   0.45    // 弹夹打空/换弹时视线中点烟的插值比例（45% 偏向己方一侧）
+#define SMOKE_SELF_OFFSET           80.0    // 残血脚底自保烟沿视线前推距离（单位：游戏距离）
+#define C4_DEFUSE_APPROACH_DIST     400.0   // CT 靠近 C4 准备封烟拆包的最大搜索距离
+#define SMOKE_HIT_RADIUS            220.0   // 烟雾弹有效落点判定半径（烟雾扩散范围大，放宽至 220）
+
 // --- 可视化渲染参数 ---
 #define CIRCLE_SEGS                 24      // 落点判定圆分段数
 #define BEAM_WIDTH                  1.5     // 弹道光束宽度
@@ -53,14 +61,16 @@
 // --- 测试辅助参数 ---
 #define TEST_BOT_GRENADE_AMMO       10      // 测试模式下 Bot 出生补给的手雷数量
 
-// 弹道 HULL 碰撞体半尺寸（与引擎 CBaseCSGrenade 保持一致）
+// 弹道 HULL 碰撞体半尺寸与碰撞掩码（采用 CS:S 引擎手雷原生碰撞规则，不被玩家空气墙阻挡）
 stock const float SIM_MINS[3] = {-2.0, -2.0, -2.0};    // 用于手雷撞墙反弹的物理结算
 stock const float SIM_MAXS[3] = { 2.0,  2.0,  2.0};
+#define MASK_GRENADE_SIM            MASK_SHOT_HULL
 
 // 可视化颜色常量（RGBA）
 stock const int COLOR_TRAJ[4] = {255, 160,   0, 220};  // 橙色：弹道抛物线
 stock const int COLOR_HIT[4]  = {  0, 220,  60, 220};  // 绿色：命中判定圆
 stock const int COLOR_MISS[4] = {255,  40,  40, 220};  // 红色：未命中/不合格落点
+stock const int COLOR_SMOKE[4]= {180, 180, 200, 220};  // 灰白色：烟雾弹落点判定圆
 
 //========================================================================================
 // HANDLES & GLOBAL VARIABLES
@@ -71,6 +81,8 @@ ConVar cvarEnable;
 ConVar cvarDebug;
 ConVar cvarRequireCover;
 ConVar cvarFriendlyFire;
+ConVar cvarSmokeEnable;
+ConVar cvarSmokeHp;
 ConVar cvarBulletScale;
 ConVar cvarBotGrenades;
 ConVar cvarGravity;
@@ -79,7 +91,14 @@ ConVar cvarGravity;
 int g_iBeamSprite = -1;
 
 // 各 Bot 独立状态
-float g_fLastThrowTime[MAXPLAYERS + 1] = {0.0};              // 上次丢雷时间戳
+float g_fLastThrowTime[MAXPLAYERS + 1]      = {0.0};         // 上次丢 HE 手雷时间戳
+float g_fLastSmokeThrowTime[MAXPLAYERS + 1] = {0.0};         // 上次丢烟雾弹时间戳
+
+// C4 战术全局状态
+bool  g_bIsC4Planted                        = false;         // 场上是否存在已安放的 C4
+float g_vecPlantedC4Pos[3];                                  // 已安放 C4 的 3D 坐标
+bool  g_bIsC4Dropped                        = false;         // 场上是否存在掉落的 C4
+float g_vecDroppedC4Pos[3];                                  // 掉落 C4 的 3D 坐标
 
 // 视线与朝向覆写
 bool  g_bAngleOverride[MAXPLAYERS + 1]      = {false};       // 是否处于朝向锁定中

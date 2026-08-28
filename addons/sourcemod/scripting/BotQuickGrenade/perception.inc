@@ -24,8 +24,8 @@ stock void GetClientAABBCenter(int client, float center[3])
 {
     float origin[3], mins[3], maxs[3];
     GetClientAbsOrigin(client, origin);
-    GetEntPropVector(client, Prop_Send, "m_vecMins", mins);
-    GetEntPropVector(client, Prop_Send, "m_vecMaxs", maxs);
+    GetClientMins(client, mins);
+    GetClientMaxs(client, maxs);
 
     center[0] = origin[0] + (mins[0] + maxs[0]) * 0.5;
     center[1] = origin[1] + (mins[1] + maxs[1]) * 0.5;
@@ -59,7 +59,7 @@ stock void UpdateBotVision(int bot)
         float toTarget[3];
         SubtractVectors(targetPos, botEye, toTarget);
         float dist = GetVectorLength(toTarget);
-        if (dist > VISION_MAX_RANGE) continue;
+        if (dist < 1.0 || dist > VISION_MAX_RANGE) continue;
 
         NormalizeVector(toTarget, toTarget);
 
@@ -72,14 +72,8 @@ stock void UpdateBotVision(int bot)
         if (angle <= BOT_FOV_HALF)
         {
             // 物理视线遮挡检测 (Line of Sight)
-            Handle ray = TR_TraceRayFilterEx(botEye, targetPos, MASK_VISIBLE, RayType_EndPoint, TraceFilter_DontHitSelf, bot);
-            bool visible = false;
-
-            if (TR_GetFraction(ray) == 1.0 || TR_GetEntityIndex(ray) == t)
-            {
-                visible = true;
-            }
-            CloseHandle(ray);
+            TR_TraceRayFilter(botEye, targetPos, MASK_VISIBLE, RayType_EndPoint, TraceFilter_DontHitSelf, bot);
+            bool visible = (TR_GetFraction() == 1.0 || TR_GetEntityIndex() == t);
 
             if (visible)
             {
@@ -157,7 +151,7 @@ stock void ProcessGunfire(int shooter)
             g_fLastPerceivedTime[bot][shooter] = now;
             g_vecLastKnownPos[bot][shooter]    = perceivedPos;
 
-            LogDebug("\x04[BotQG - 听觉]\x01 Bot \x03%N\x01 听到敌人 \x05%N\x01 的枪声%s (距离: %.0f, 误差散布: %.0f)", 
+            LogDebug("\x04[BotQG - 听觉]\x01 Bot \x03%N\x01 听到敌人 \x05%N\x01 的枪声%s (距离: %.0f, 误差散布: %.0f)",
                 bot, shooter, isSilenced ? "(消音)" : "", dist, SOUND_DISPERSION_GUNFIRE);
         }
     }
@@ -240,4 +234,60 @@ stock void ClearPlayerMemory(int client)
         g_vecLastKnownPos[b][client]    = NULL_VECTOR;
         g_vecLastKnownPos[client][b]    = NULL_VECTOR;
     }
+}
+
+/**
+ * 清空场上所有 Bot 的感知记忆（回合重置时调用）
+ */
+stock void ClearAllMemory()
+{
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        for (int j = 1; j <= MaxClients; j++)
+        {
+            g_fLastPerceivedTime[i][j] = 0.0;
+            g_vecLastKnownPos[i][j]    = NULL_VECTOR;
+        }
+    }
+}
+
+/**
+ * 重置 C4 战术全局状态（回合开始或结束时调用）
+ */
+stock void ResetC4State()
+{
+    g_bIsC4Planted    = false;
+    g_vecPlantedC4Pos = NULL_VECTOR;
+
+    g_bIsC4Dropped    = false;
+    g_vecDroppedC4Pos = NULL_VECTOR;
+}
+
+/**
+ * C4 安放成功
+ */
+stock void ProcessBombPlanted(const float pos[3])
+{
+    g_bIsC4Planted    = true;
+    g_vecPlantedC4Pos = pos;
+    g_bIsC4Dropped    = false;
+    g_vecDroppedC4Pos = NULL_VECTOR;
+}
+
+/**
+ * C4 掉落在地上
+ */
+stock void ProcessBombDropped(const float pos[3])
+{
+    g_bIsC4Dropped    = true;
+    g_vecDroppedC4Pos = pos;
+}
+
+/**
+ * C4 被拾起
+ */
+stock void ProcessBombPickup()
+{
+    g_bIsC4Dropped    = false;
+    g_vecDroppedC4Pos = NULL_VECTOR;
 }

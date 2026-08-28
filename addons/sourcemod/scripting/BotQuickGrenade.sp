@@ -1,4 +1,4 @@
-﻿//========================================================================================
+//========================================================================================
 // BotQuickGrenade - Bot 快速手雷战术 AI 插件 (QuickSeries 配套扩展)
 //
 // 模块化架构：
@@ -66,9 +66,10 @@ public void OnMapStart()
 
     for (int i = 1; i <= MaxClients; i++)
     {
-        g_fLastThrowTime[i]  = 0.0;
-        g_bAngleOverride[i]  = false;
-        g_fOverrideExpiry[i] = 0.0;
+        g_fLastThrowTime[i]      = 0.0;
+        g_fLastSmokeThrowTime[i] = 0.0;
+        g_bAngleOverride[i]      = false;
+        g_fOverrideExpiry[i]     = 0.0;
 
         for (int j = 1; j <= MaxClients; j++)
         {
@@ -85,9 +86,10 @@ public void OnClientPutInServer(int client)
 
 public void OnClientDisconnect(int client)
 {
-    g_fLastThrowTime[client]  = 0.0;
-    g_bAngleOverride[client]  = false;
-    g_fOverrideExpiry[client] = 0.0;
+    g_fLastThrowTime[client]      = 0.0;
+    g_fLastSmokeThrowTime[client] = 0.0;
+    g_bAngleOverride[client]      = false;
+    g_fOverrideExpiry[client]     = 0.0;
 
     ClearPlayerMemory(client);
 }

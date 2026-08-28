@@ -1,4 +1,4 @@
-﻿#if defined _botquickgrenade_trajectory_included
+#if defined _botquickgrenade_trajectory_included
   #endinput
 #endif
 #define _botquickgrenade_trajectory_included
@@ -46,7 +46,7 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float d
     vel[1] = fwd[1] * throwSpeed + playerVel[1];
     vel[2] = fwd[2] * throwSpeed + playerVel[2];
 
-    float gravity = float(cvarGravity.IntValue);
+    float gravity = (cvarGravity != null) ? float(cvarGravity.IntValue) : 800.0;
     float gForce = 0.4 * gravity; // CS:S 手雷重力系数为 0.4 * sv_gravity
     float dt = SIM_TIMESTEP;
 
@@ -64,21 +64,13 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float d
         nextPos[2] = pos[2] + (vel[2] + newVz) * 0.5 * dt;
         vel[2] = newVz;
 
-        Handle ray = TR_TraceHullEx(pos, nextPos, SIM_MINS, SIM_MAXS, MASK_SHOT_HULL);
-        float frac = TR_GetFraction(ray);
+        TR_TraceHullFilter(pos, nextPos, SIM_MINS, SIM_MAXS, MASK_GRENADE_SIM, TraceFilter_DontHitSelf, bot);
+        float frac = TR_GetFraction();
 
         if (frac != 1.0)
         {
-            // 第一帧若碰撞自身则跳过
-            if (t == 0.0 && TR_GetEntityIndex(ray) == bot)
-            {
-                CloseHandle(ray);
-                pos = nextPos;
-                continue;
-            }
-
             // 获取碰撞接触点
-            TR_GetEndPosition(nextPos, ray);
+            TR_GetEndPosition(nextPos);
 
             // 绘制撞击前的这段激光弹道
             if (visualize)
@@ -88,8 +80,9 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float d
 
             // 1. 计算法线反弹向量 (Impulse = 2.0 * dot(N, V))
             float normal[3];
-            TR_GetPlaneNormal(ray, normal);
+            TR_GetPlaneNormal(null, normal);
             float impulse = 2.0 * GetVectorDotProduct(normal, vel);
+
             for (int i = 0; i < 3; i++)
             {
                 vel[i] -= impulse * normal[i];
@@ -100,17 +93,16 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float d
             }
 
             // 2. 表面弹性与能量衰减
-            int hitEntity = TR_GetEntityIndex(ray);
+            int hitEntity = TR_GetEntityIndex();
             float surfaceElasticity = 1.0;
-            if (hitEntity > 0 && IsValidEntity(hitEntity) && HasEntProp(hitEntity, Prop_Send, "m_flElasticity"))
+            if (hitEntity > 0 && IsValidEntity(hitEntity) && HasEntProp(hitEntity, Prop_Data, "m_flElasticity"))
             {
-                float el = GetEntPropFloat(hitEntity, Prop_Send, "m_flElasticity");
+                float el = GetEntPropFloat(hitEntity, Prop_Data, "m_flElasticity");
                 if (el > 0.0) surfaceElasticity = el;
             }
             float elasticity = 0.45 * surfaceElasticity;
             ScaleVector(vel, elasticity);
 
-            CloseHandle(ray);
             pos = nextPos;
             bounceCount++;
 
@@ -130,7 +122,6 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float d
             DrawBeamSegment(pos, nextPos, COLOR_TRAJ, BEAM_LIFE);
         }
 
-        CloseHandle(ray);
         pos = nextPos;
     }
 
@@ -138,23 +129,50 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float d
     detonatePos = pos;
 }
 
+public bool TraceFilter_WorldOnly(int entity, int contentsMask, any data)
+{
+    // 忽略所有玩家/Bot 实体，只检测世界笔刷与静态实体掩体
+    return (entity == 0 || entity > MaxClients);
+}
+
+/**
+ * 爆炸冲击波通达性检测：
+ * 验证最终爆炸点与敌人目标之间是否有不可穿透的实心高墙阻隔
+ */
+stock bool CanExplosionReachTarget(const float detonatePos[3], const float targetPos[3])
+{
+    float start[3], end[3];
+    start[0] = detonatePos[0];
+    start[1] = detonatePos[1];
+    start[2] = detonatePos[2] + 4.0; // 稍微抬高 4 单位避免贴地微小地形凸起误差
+
+    end[0] = targetPos[0];
+    end[1] = targetPos[1];
+    end[2] = targetPos[2] + 20.0;    // 对准敌人下半身/膝盖高度
+
+    TR_TraceRayFilter(start, end, MASK_VISIBLE, RayType_EndPoint, TraceFilter_WorldOnly);
+    return (TR_GetFraction() == 1.0);
+}
+
 /**
  * 针对目标空间坐标搜索最优抛投仰角（以最终爆炸点为基准进行两段式搜索）
  *
- * @param bot         Bot 实体索引
- * @param targetPos   目标 3D 空间坐标
- * @param yaw         水平瞄准偏航角
- * @param bestPitch   输出求解出的最优仰角
- * @param detonatePos 输出最优最终爆炸点坐标
- * @return            若存在爆炸点在 HE_HIT_RADIUS 范围内的有效仰角返回 true，否则 false
+ * @param bot          Bot 实体索引
+ * @param targetPos    目标 3D 空间坐标
+ * @param yaw          水平瞄准偏航角
+ * @param bestPitch    输出求解出的最优仰角
+ * @param detonatePos  输出最优最终爆炸点坐标
+ * @param maxHitRadius 允许的最大命中半径（默认 HE_HIT_RADIUS）
+ * @return             若存在爆炸点在 maxHitRadius 范围内且爆炸视线通畅返回 true，否则 false
  */
-stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, float &bestPitch, float detonatePos[3])
+stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, float &bestPitch, float detonatePos[3], float maxHitRadius = HE_HIT_RADIUS)
 {
     float bestDist = 9999999.0;
     bestPitch = 0.0;
 
-    // --- 阶段一：粗搜 (步长 PITCH_STEP_COARSE) ---
+    // --- 阶段一：粗搜 (步长 PITCH_STEP_COARSE，从高抛仰角向平视逐步搜索) ---
     float coarseBest = 0.0;
+    float coarseMinDist = 9999999.0;
     for (float p = PITCH_MIN; p <= PITCH_MAX; p += PITCH_STEP_COARSE)
     {
         float angles[3];
@@ -166,10 +184,18 @@ stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, 
         SimulateGrenadeTrajectoryWithAngles(bot, angles, tDetonate, false);
 
         float d = GetVectorDistance(tDetonate, targetPos);
-        if (d < bestDist)
+        // 粗搜最优基准点必须满足：视线通达可穿透，防止细搜中心锚定在被死墙阻隔的无效死角
+        if (d < coarseMinDist && CanExplosionReachTarget(tDetonate, targetPos))
+        {
+            coarseMinDist = d;
+            coarseBest = p;
+        }
+
+        // 若落点在有效杀伤/覆盖范围内且爆炸冲击波未被高墙阻隔，记录为候选
+        if (d <= maxHitRadius && d < bestDist && CanExplosionReachTarget(tDetonate, targetPos))
         {
             bestDist = d;
-            coarseBest = p;
+            bestPitch = p;
             detonatePos = tDetonate;
         }
     }
@@ -191,7 +217,8 @@ stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, 
         SimulateGrenadeTrajectoryWithAngles(bot, angles, tDetonate, false);
 
         float d = GetVectorDistance(tDetonate, targetPos);
-        if (d < bestDist)
+        // 细搜阶段必须同时满足：距离更优 + 冲击波视线畅通直达目标
+        if (d <= maxHitRadius && d < bestDist && CanExplosionReachTarget(tDetonate, targetPos))
         {
             bestDist = d;
             bestPitch = p;
@@ -199,23 +226,32 @@ stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, 
         }
     }
 
-    return (bestDist <= HE_HIT_RADIUS);
+    return (bestDist <= maxHitRadius);
 }
 
 /**
- * 检查玩家背包中是否拥有指定类名的手雷
+ * 检查玩家背包中是否拥有指定类名的手雷且拥有可用弹药
  */
 stock bool BotHasGrenade(int client, const char[] classname)
 {
-    for (int slot = 3; slot <= 7; slot++)
+    for (int i = 0; i < 48; i++)
     {
-        int wep = GetPlayerWeaponSlot(client, slot);
-        if (wep <= 0 || !IsValidEntity(wep)) continue;
-
-        char cls[32];
-        GetEntityClassname(wep, cls, sizeof(cls));
-        if (StrEqual(cls, classname, false))
-            return true;
+        int wep = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", i);
+        if (wep > 0 && IsValidEntity(wep))
+        {
+            char cls[32];
+            GetEntityClassname(wep, cls, sizeof(cls));
+            if (StrEqual(cls, classname, false))
+            {
+                int ammoType = GetEntProp(wep, Prop_Send, "m_iPrimaryAmmoType");
+                if (ammoType >= 0)
+                {
+                    int ammo = GetEntProp(client, Prop_Send, "m_iAmmo", _, ammoType);
+                    return (ammo > 0);
+                }
+                return true;
+            }
+        }
     }
     return false;
 }
