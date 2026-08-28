@@ -7,7 +7,7 @@
 // DEFINES
 //========================================================================================
 
-#define PLUGIN_VERSION        "1.4"
+#define PLUGIN_VERSION        "1.5"
 
 #define EF_NODRAW             32
 

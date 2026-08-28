@@ -90,6 +90,17 @@ bool PerformQuickMelee(int client)
     SetEntPropFloat(client, Prop_Data, "m_flNextAttack", 0.0);
     SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", melee);
 
+    // w 模可见性修复：Deploy 被跳过导致 EF_NODRAW 残留，第三方全程看不到刀（m_iState 交由 UpdateClientData 下一帧自动翻转，不手动置以避免切枪时 idle 闪现）
+    if (curActiveWeapon > 0 && IsValidEntity(curActiveWeapon) && curActiveWeapon != melee)
+    {
+        int fxOld = GetEntProp(curActiveWeapon, Prop_Send, "m_fEffects");
+        if ((fxOld & EF_NODRAW) == 0)
+            SetEntProp(curActiveWeapon, Prop_Send, "m_fEffects", fxOld | EF_NODRAW);
+    }
+    int fxNew = GetEntProp(melee, Prop_Send, "m_fEffects");
+    if (fxNew & EF_NODRAW)
+        SetEntProp(melee, Prop_Send, "m_fEffects", fxNew & ~EF_NODRAW);
+
     // 清空射击计数与刀的攻击冷却，使得在 OnPlayerRunCmd 中注入攻击键后能立即挥刀
     SetEntProp(client, Prop_Send, "m_iShotsFired", 0);
     SetEntPropFloat(melee, Prop_Send, "m_flNextPrimaryAttack", 0.0);

@@ -90,6 +90,17 @@ bool TriggerQuickGrenade(int client, const char[] grenadeClassname, bool isHoldC
     SetEntPropFloat(client, Prop_Data, "m_flNextAttack", 0.0);
     SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", grenadeEnt);
 
+    // w 模可见性修复：同 QuickMelee，仅处理 EF_NODRAW，m_iState 下一帧自动修正
+    if (curActiveWeapon > 0 && IsValidEntity(curActiveWeapon) && curActiveWeapon != grenadeEnt)
+    {
+        int fxOld = GetEntProp(curActiveWeapon, Prop_Send, "m_fEffects");
+        if ((fxOld & EF_NODRAW) == 0)
+            SetEntProp(curActiveWeapon, Prop_Send, "m_fEffects", fxOld | EF_NODRAW);
+    }
+    int fxNew = GetEntProp(grenadeEnt, Prop_Send, "m_fEffects");
+    if (fxNew & EF_NODRAW)
+        SetEntProp(grenadeEnt, Prop_Send, "m_fEffects", fxNew & ~EF_NODRAW);
+
     // 清空射击计数与手雷攻击冷却，使得在第 1 帧注入 IN_ATTACK 后能立即开始引雷动画 ACT_VM_PULLPIN
     SetEntProp(client, Prop_Send, "m_iShotsFired", 0);
     SetEntPropFloat(grenadeEnt, Prop_Send, "m_flNextPrimaryAttack", 0.0);
