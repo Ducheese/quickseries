@@ -229,8 +229,8 @@ stock void ClearPlayerMemory(int client)
 {
     for (int b = 1; b <= MaxClients; b++)
     {
-        g_fLastPerceivedTime[b][client] = 0.0;
-        g_fLastPerceivedTime[client][b] = 0.0;
+        g_fLastPerceivedTime[b][client] = 0.0;  // 别人对我的记忆（列）
+        g_fLastPerceivedTime[client][b] = 0.0;  // 我对别人的记忆（行）
         g_vecLastKnownPos[b][client]    = NULL_VECTOR;
         g_vecLastKnownPos[client][b]    = NULL_VECTOR;
     }
@@ -258,9 +258,10 @@ stock void ResetC4State()
 {
     g_bIsC4Planted    = false;
     g_vecPlantedC4Pos = NULL_VECTOR;
-
     g_bIsC4Dropped    = false;
     g_vecDroppedC4Pos = NULL_VECTOR;
+    g_fLastTeamC4SmokeTime[CS_TEAM_T]  = 0.0;
+    g_fLastTeamC4SmokeTime[CS_TEAM_CT] = 0.0;
 }
 
 /**

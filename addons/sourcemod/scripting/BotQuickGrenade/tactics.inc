@@ -72,16 +72,56 @@ stock bool IsTeammateNearPosition(int bot, const float pos[3], float radius)
 }
 
 /**
+ * 检查 Bot 当前是否正在执行不可打断的 C4 核心动作（正在按 E 拆包 或 正在按住左键插雷管下包）
+ */
+stock bool IsBotBusyWithC4(int bot)
+{
+    if (GetEntProp(bot, Prop_Send, "m_bIsDefusing") == 1)
+        return true;
+
+    int activeWep = GetEntPropEnt(bot, Prop_Send, "m_hActiveWeapon");
+    if (activeWep > 0 && IsValidEntity(activeWep))
+    {
+        char wepCls[32];
+        GetEntityClassname(activeWep, wepCls, sizeof(wepCls));
+        if (StrEqual(wepCls, "weapon_c4", false))
+        {
+            if (HasEntProp(activeWep, Prop_Send, "m_bStartedArming") && GetEntProp(activeWep, Prop_Send, "m_bStartedArming") == 1)
+                return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * 检查当前游戏内敌对阵营是否仍有存活玩家/Bot
+ */
+stock bool HasLivingEnemies(int botTeam)
+{
+    int enemyTeam = (botTeam == CS_TEAM_CT) ? CS_TEAM_T : CS_TEAM_CT;
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == enemyTeam)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * 核心决策函数：遍历记忆库，寻找符合掩体战术与安全条件的最佳投掷目标并计算投掷角度
  *
  * @param bot          Bot 实体索引
  * @param throwAngles  输出计算出的最佳投掷欧拉角 (pitch, yaw, 0)
  * @param landPos      输出最佳落点坐标
- * @param visualize    是否绘制可视化弹道与判定圆
  * @return             有效目标实体索引，若无可行目标返回 -1
  */
-stock int FindTargetAndComputeAngles(int bot, float throwAngles[3], float landPos[3], bool visualize)
+stock int FindTargetAndComputeAngles(int bot, float throwAngles[3], float landPos[3])
 {
+    if (!IsClientInGame(bot) || !IsPlayerAlive(bot) || IsBotBusyWithC4(bot))
+        return -1;
+
     int botTeam = GetClientTeam(bot);
     float now = GetGameTime();
 
@@ -99,13 +139,7 @@ stock int FindTargetAndComputeAngles(int bot, float throwAngles[3], float landPo
 
         // 2. 掩体战术限制检查：若枪线完全通畅直连，则优先用枪交火，禁止面对面当脸拔雷
         if (GetConVarBool(cvarRequireCover) && CanShootTargetDirectly(bot, t))
-        {
-            if (visualize)
-            {
-                LogDebug("\x04[BotQG - 战术放弃]\x01 Bot \x03%N\x01 与敌人 \x05%N\x01 枪线直连通畅，优先用枪，放弃丢雷", bot, t);
-            }
             continue;
-        }
 
         // 3. 距离区间粗筛（太近防自炸，太远抛不到）
         float targetPos[3];
@@ -127,28 +161,11 @@ stock int FindTargetAndComputeAngles(int bot, float throwAngles[3], float landPo
         {
             // 6. 队友防误伤安全检查
             if (GetConVarBool(cvarFriendlyFire) && IsTeammateNearPosition(bot, landPos, TEAMMATE_SAFETY_RADIUS))
-            {
-                if (visualize)
-                {
-                    LogDebug("\x04[BotQG - 安全放弃]\x01 Bot \x03%N\x01 计算出落点附近有存活队友，放弃丢雷以防误伤", bot);
-                }
                 continue;
-            }
 
             throwAngles[0] = bestPitch;
             throwAngles[1] = yaw;
             throwAngles[2] = 0.0;
-
-            if (visualize)
-            {
-                float simAngles[3];
-                simAngles[0] = bestPitch;
-                simAngles[1] = yaw;
-                simAngles[2] = 0.0;
-                float visLand[3];
-                SimulateGrenadeTrajectoryWithAngles(bot, simAngles, visLand, true);
-                DrawLandingCircle(landPos, HE_HIT_RADIUS, COLOR_HIT, BEAM_LIFE);
-            }
 
             return t;
         }
@@ -168,15 +185,22 @@ stock int FindTargetAndComputeAngles(int bot, float throwAngles[3], float landPo
  * @param landPos      输出烟雾弹最终落点坐标
  * @param outReason    输出触发原因描述
  * @param maxReasonLen 描述字符串缓冲区大小
- * @param debug        是否渲染弹道与圆圈
+ * @param isC4Event    输出是否命中了 C4 战术事件（用于阵营团队协同冷却更新）
  * @return             若找到有效烟雾战术目标且解算成功返回 true，否则 false
  */
-stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[3], char[] outReason, int maxReasonLen, bool visualize)
+stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[3], char[] outReason, int maxReasonLen, bool &isC4Event)
 {
-    if (!IsClientInGame(bot) || !IsPlayerAlive(bot))
+    isC4Event = false;
+
+    if (!IsClientInGame(bot) || !IsPlayerAlive(bot) || IsBotBusyWithC4(bot))
         return false;
 
     int team = GetClientTeam(bot);
+
+    // 敌方存活检查：若敌对阵营已全灭（无任何外部威胁），严禁浪费投掷战术烟雾弹
+    if (!HasLivingEnemies(team))
+        return false;
+
     float botEye[3], botPos[3], botAng[3], fwd[3];
     GetClientEyePosition(bot, botEye);
     GetClientAbsOrigin(bot, botPos);
@@ -188,84 +212,149 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
     bool hasTarget = false;
 
     //====================================================================================
-    // 优先级 1：C4 核心战术事件
+    // 优先级 1：C4 核心战术事件（阵营共享烟雾冷却：若同队已有队友在 C4 封烟，浓烟散去前不扎堆重复丢）
     //====================================================================================
+    bool teamC4SmokeOnCooldown = (GetGameTime() - g_fLastTeamC4SmokeTime[team] < C4_TEAM_SMOKE_COOLDOWN);
 
-    // 1.1 CT 拆包封烟 (Defuse Smoke Cover)
-
-    if (team == 3) // 3 = CT
+    if (!teamC4SmokeOnCooldown)
     {
-        if (g_bIsC4Planted)
+        // 1.1 CT 拆包与掩护封烟 (Defuse Smoke Cover)
+        if (team == CS_TEAM_CT)
         {
-            float distToC4 = GetVectorDistance(botPos, g_vecPlantedC4Pos);
-            bool isDefusing = (GetEntProp(bot, Prop_Send, "m_bIsDefusing") == 1);
-            if (isDefusing || distToC4 <= C4_DEFUSE_APPROACH_DIST)
+            if (g_bIsC4Planted)
             {
-                smokeTarget = g_vecPlantedC4Pos;
-                hasTarget = true;
-                Format(outReason, maxReasonLen, "CT 掩护拆包封烟 (距离 C4: %.0f)", distToC4);
-            }
-        }
-    }
-    // 1.2 T 阵营 C4 战术
-    else if (team == 2) // 2 = T
-    {
-        // 1.2.1 若 C4 已经安放成功 -> T 方执行「守包延时封烟」：像 HE 一样将烟雾弹精准抛向回防的 CT 掩体/通道
-        if (g_bIsC4Planted)
-        {
-            float now = GetGameTime();
-            for (int t = 1; t <= MaxClients; t++)
-            {
-                if (!IsClientInGame(t) || !IsPlayerAlive(t) || GetClientTeam(t) == 2)
-                    continue;
+                float distToC4 = GetVectorDistance(botPos, g_vecPlantedC4Pos);
+                bool isDefusing = (GetEntProp(bot, Prop_Send, "m_bIsDefusing") == 1);
+                bool inBombZone = (HasEntProp(bot, Prop_Send, "m_bInBombZone") && GetEntProp(bot, Prop_Send, "m_bInBombZone") == 1);
 
-                if (g_fLastPerceivedTime[bot][t] > 0.0 && (now - g_fLastPerceivedTime[bot][t] <= MEMORY_DURATION))
+                // 检查是否有任意 CT 队友正在拆包
+                bool teammateDefusing = false;
+                for (int t = 1; t <= MaxClients; t++)
                 {
-                    float enemyPos[3];
-                    enemyPos = g_vecLastKnownPos[bot][t];
-                    float d = GetVectorDistance(botPos, enemyPos);
-
-                    if (d >= DIST_MIN && d <= DIST_MAX)
+                    if (t != bot && IsClientInGame(t) && IsPlayerAlive(t) && GetClientTeam(t) == CS_TEAM_CT)
                     {
-                        smokeTarget = enemyPos;
-                        hasTarget = true;
-                        Format(outReason, maxReasonLen, "T 守包封锁回防 CT 掩体 (敌: %N, 距离: %.0f)", t, d);
-                        break;
+                        if (GetEntProp(t, Prop_Send, "m_bIsDefusing") == 1)
+                        {
+                            teammateDefusing = true;
+                            break;
+                        }
                     }
                 }
-            }
-        }
-        else
-        {
-            // 1.2.2 C4 未安放 -> 正在下包掩护 或 捡掉落包封烟
-            int activeWep = GetEntPropEnt(bot, Prop_Send, "m_hActiveWeapon");
-            if (activeWep > 0 && IsValidEntity(activeWep))
-            {
-                char wepCls[32];
-                GetEntityClassname(activeWep, wepCls, sizeof(wepCls));
-                if (StrEqual(wepCls, "weapon_c4", false))
-                {
-                    // 必须是真正按住左键正在下包（m_bStartedArming == 1），杜绝开局手持 C4 跑路时误在脚底封烟
-                    bool isPlanting = (HasEntProp(activeWep, Prop_Send, "m_bStartedArming") && GetEntProp(activeWep, Prop_Send, "m_bStartedArming") == 1);
-                    if (isPlanting)
-                    {
-                        smokeTarget[0] = botPos[0] + fwd[0] * 50.0;
-                        smokeTarget[1] = botPos[1] + fwd[1] * 50.0;
-                        smokeTarget[2] = botPos[2];
-                        hasTarget = true;
-                        Format(outReason, maxReasonLen, "T 掩护下包封烟");
-                    }
-                }
-            }
 
-            if (!hasTarget && g_bIsC4Dropped)
-            {
-                float distToDropped = GetVectorDistance(botPos, g_vecDroppedC4Pos);
-                if (distToDropped <= 600.0)
+                // 自己没在拆包的前提下：自己准备去拆（进包点/靠近C4），或者有队友正在拆包且在投掷范围内
+                if (!isDefusing && (inBombZone || distToC4 <= C4_DEFUSE_APPROACH_DIST || (teammateDefusing && distToC4 <= DIST_MAX)))
                 {
-                    smokeTarget = g_vecDroppedC4Pos;
+                    smokeTarget = g_vecPlantedC4Pos;
                     hasTarget = true;
-                    Format(outReason, maxReasonLen, "T 掩护拾取掉落 C4 封烟 (距离: %.0f)", distToDropped);
+                    isC4Event = true;
+                    Format(outReason, maxReasonLen, teammateDefusing ? "CT 掩护队友拆包封烟" : "CT 进点拆包前置封烟");
+                }
+            }
+        }
+
+    // 1.2 T 阵营 C4 战术
+        else if (team == CS_TEAM_T)
+        {
+            // 1.2.1 若 C4 已经安放成功 -> T 方执行「守包延时封烟」：像 HE 一样将烟雾弹精准抛向回防的 CT 掩体/通道
+            if (g_bIsC4Planted)
+            {
+                float now = GetGameTime();
+                for (int t = 1; t <= MaxClients; t++)
+                {
+                    if (!IsClientInGame(t) || !IsPlayerAlive(t) || GetClientTeam(t) == CS_TEAM_T)
+                        continue;
+
+                    if (g_fLastPerceivedTime[bot][t] > 0.0 && (now - g_fLastPerceivedTime[bot][t] <= MEMORY_DURATION))
+                    {
+                        float enemyPos[3];
+                        enemyPos = g_vecLastKnownPos[bot][t];
+                        float d = GetVectorDistance(botPos, enemyPos);
+
+                        if (d >= DIST_MIN && d <= DIST_MAX)
+                        {
+                            smokeTarget = enemyPos;
+                            hasTarget = true;
+                            isC4Event = true;
+                            Format(outReason, maxReasonLen, "T 守包封锁回防 CT 掩体 (敌: %N, 距离: %.0f)", t, d);
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // 1.2.2 C4 未安放 -> 自己持包进点 / 掩护队友下包 / 捡掉落包
+                int activeWep = GetEntPropEnt(bot, Prop_Send, "m_hActiveWeapon");
+                if (activeWep > 0 && IsValidEntity(activeWep))
+                {
+                    char wepCls[32];
+                    GetEntityClassname(activeWep, wepCls, sizeof(wepCls));
+                    if (StrEqual(wepCls, "weapon_c4", false))
+                    {
+                        bool isPlanting = (HasEntProp(activeWep, Prop_Send, "m_bStartedArming") && GetEntProp(activeWep, Prop_Send, "m_bStartedArming") == 1);
+                        bool inBombZone = (HasEntProp(bot, Prop_Send, "m_bInBombZone") && GetEntProp(bot, Prop_Send, "m_bInBombZone") == 1);
+
+                        // 自己持包：进包点且尚未开始插雷管时前置封烟（插雷管中绝不自打断）
+                        if (!isPlanting && inBombZone)
+                        {
+                            smokeTarget[0] = botPos[0] + fwd[0] * C4_PLANT_SELF_OFFSET;
+                            smokeTarget[1] = botPos[1] + fwd[1] * C4_PLANT_SELF_OFFSET;
+                            smokeTarget[2] = botPos[2];
+                            hasTarget = true;
+                            isC4Event = true;
+                            Format(outReason, maxReasonLen, "T 持包进点前置封烟");
+                        }
+                    }
+                }
+
+                // 自己不是下包者（没拿 C4 或不在下包），检查是否有队友正在包点下包
+                if (!hasTarget)
+                {
+                    for (int t = 1; t <= MaxClients; t++)
+                    {
+                        if (t == bot || !IsClientInGame(t) || !IsPlayerAlive(t) || GetClientTeam(t) != CS_TEAM_T)
+                            continue;
+
+                        int tWep = GetEntPropEnt(t, Prop_Send, "m_hActiveWeapon");
+                        if (tWep > 0 && IsValidEntity(tWep))
+                        {
+                            char tCls[32];
+                            GetEntityClassname(tWep, tCls, sizeof(tCls));
+                            if (StrEqual(tCls, "weapon_c4", false))
+                            {
+                                bool tIsPlanting = (HasEntProp(tWep, Prop_Send, "m_bStartedArming") && GetEntProp(tWep, Prop_Send, "m_bStartedArming") == 1);
+                                bool tInBombZone = (HasEntProp(t, Prop_Send, "m_bInBombZone") && GetEntProp(t, Prop_Send, "m_bInBombZone") == 1);
+
+                                if (tIsPlanting || tInBombZone)
+                                {
+                                    float tPos[3];
+                                    GetClientAbsOrigin(t, tPos);
+                                    float distToPlanter = GetVectorDistance(botPos, tPos);
+
+                                    if (distToPlanter >= C4_PLANTER_COVER_MIN_DIST && distToPlanter <= DIST_MAX)
+                                    {
+                                        smokeTarget = tPos;
+                                        hasTarget = true;
+                                        isC4Event = true;
+                                        Format(outReason, maxReasonLen, "T 掩护队友 %N 下包封烟 (距离: %.0f)", t, distToPlanter);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!hasTarget && g_bIsC4Dropped)
+                {
+                    float distToDropped = GetVectorDistance(botPos, g_vecDroppedC4Pos);
+                    if (distToDropped <= C4_DROPPED_SEARCH_DIST)
+                    {
+                        smokeTarget = g_vecDroppedC4Pos;
+                        hasTarget = true;
+                        isC4Event = true;
+                        Format(outReason, maxReasonLen, "T 掩护拾取掉落 C4 封烟 (距离: %.0f)", distToDropped);
+                    }
                 }
             }
         }
@@ -319,8 +408,9 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
 
             if (clip1 == 0 || inReload)
             {
-                float nearestDist = 999999.0;
+                float nearestDist = MAX_SEARCH_DIST;
                 int nearestEnemy = -1;
+
                 float now = GetGameTime();
 
                 for (int t = 1; t <= MaxClients; t++)
@@ -343,13 +433,11 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
                 {
                     float enemyPos[3];
                     enemyPos = g_vecLastKnownPos[bot][nearestEnemy];
-
                     smokeTarget[0] = botPos[0] + (enemyPos[0] - botPos[0]) * SMOKE_INTERPOLATION_RATIO;
                     smokeTarget[1] = botPos[1] + (enemyPos[1] - botPos[1]) * SMOKE_INTERPOLATION_RATIO;
                     smokeTarget[2] = botPos[2] + (enemyPos[2] - botPos[2]) * SMOKE_INTERPOLATION_RATIO;
-
                     hasTarget = true;
-                    Format(outReason, maxReasonLen, "弹夹耗尽换弹中点烟 (敌: %N, 距离: %.0f)", nearestEnemy, nearestDist);
+                    Format(outReason, maxReasonLen, inReload ? "换弹视线中点封烟" : "弹夹打空视线中点封烟");
                 }
             }
         }
@@ -370,25 +458,9 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
 
     if (hit)
     {
-        if (GetConVarBool(cvarFriendlyFire) && IsTeammateNearPosition(bot, landPos, TEAMMATE_SAFETY_RADIUS))
-        {
-            return false;
-        }
-
         throwAngles[0] = bestPitch;
         throwAngles[1] = yaw;
         throwAngles[2] = 0.0;
-
-        if (visualize)
-        {
-            float simAngles[3];
-            simAngles[0] = bestPitch;
-            simAngles[1] = yaw;
-            simAngles[2] = 0.0;
-            float visLand[3];
-            SimulateGrenadeTrajectoryWithAngles(bot, simAngles, visLand, true);
-            DrawLandingCircle(landPos, SMOKE_HIT_RADIUS, COLOR_SMOKE, BEAM_LIFE);
-        }
 
         return true;
     }

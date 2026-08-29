@@ -14,9 +14,11 @@
  * @param bot          Bot 实体索引
  * @param angles       指定的投掷欧拉角 (pitch, yaw, roll)
  * @param detonatePos  输出引信耗尽或滚停时的最终爆炸坐标
- * @param visualize    是否向所有玩家客户端渲染橙色弹道 Beam（含反弹轨迹）
+ * @param visualize    是否向所有玩家客户端渲染弹道 Beam（含反弹轨迹）
+ * @param color        弹道渲染颜色（RGBA，默认 COLOR_HE）
+ * @param beamLife     激光线段残留时间（秒，默认 BEAM_LIFE）
  */
-stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float detonatePos[3], bool visualize)
+stock void SimulateGrenadeTrajectoryWithAngles(int bot, const float angles[3], float detonatePos[3], bool visualize, const int color[4] = COLOR_HE, float beamLife = BEAM_LIFE)
 {
     float pitch = angles[0];
     float throwSpeed = (90.0 - pitch) * 6.0;
@@ -64,7 +66,7 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float d
         nextPos[2] = pos[2] + (vel[2] + newVz) * 0.5 * dt;
         vel[2] = newVz;
 
-        TR_TraceHullFilter(pos, nextPos, SIM_MINS, SIM_MAXS, MASK_GRENADE_SIM, TraceFilter_DontHitSelf, bot);
+        TR_TraceHullFilter(pos, nextPos, SIM_MINS, SIM_MAXS, MASK_SHOT_HULL, TraceFilter_DontHitSelf, bot);
         float frac = TR_GetFraction();
 
         if (frac != 1.0)
@@ -75,7 +77,7 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float d
             // 绘制撞击前的这段激光弹道
             if (visualize)
             {
-                DrawBeamSegment(pos, nextPos, COLOR_TRAJ, BEAM_LIFE);
+                DrawBeamSegment(pos, nextPos, color, beamLife);
             }
 
             // 1. 计算法线反弹向量 (Impulse = 2.0 * dot(N, V))
@@ -119,7 +121,7 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, float angles[3], float d
 
         if (visualize)
         {
-            DrawBeamSegment(pos, nextPos, COLOR_TRAJ, BEAM_LIFE);
+            DrawBeamSegment(pos, nextPos, color, beamLife);
         }
 
         pos = nextPos;
@@ -167,12 +169,13 @@ stock bool CanExplosionReachTarget(const float detonatePos[3], const float targe
  */
 stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, float &bestPitch, float detonatePos[3], float maxHitRadius = HE_HIT_RADIUS)
 {
-    float bestDist = 9999999.0;
+    float bestDist = MAX_SEARCH_DIST;
     bestPitch = 0.0;
 
     // --- 阶段一：粗搜 (步长 PITCH_STEP_COARSE，从高抛仰角向平视逐步搜索) ---
     float coarseBest = 0.0;
-    float coarseMinDist = 9999999.0;
+    float coarseMinDist = MAX_SEARCH_DIST;
+
     for (float p = PITCH_MIN; p <= PITCH_MAX; p += PITCH_STEP_COARSE)
     {
         float angles[3];

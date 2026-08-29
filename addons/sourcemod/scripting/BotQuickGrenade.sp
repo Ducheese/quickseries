@@ -66,30 +66,25 @@ public void OnMapStart()
 
     for (int i = 1; i <= MaxClients; i++)
     {
-        g_fLastThrowTime[i]      = 0.0;
-        g_fLastSmokeThrowTime[i] = 0.0;
+        g_fLastHeThrowTime[i]    = 0.0;    // HE
+        g_fLastSmokeThrowTime[i] = 0.0;    // Smoke
+
         g_bAngleOverride[i]      = false;
         g_fOverrideExpiry[i]     = 0.0;
-
-        for (int j = 1; j <= MaxClients; j++)
-        {
-            g_fLastPerceivedTime[i][j] = 0.0;
-            g_vecLastKnownPos[i][j]    = NULL_VECTOR;
-        }
     }
-}
 
-public void OnClientPutInServer(int client)
-{
-    SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
+    // 全局大清空
+    ClearAllMemory();
 }
 
 public void OnClientDisconnect(int client)
 {
-    g_fLastThrowTime[client]      = 0.0;
+    g_fLastHeThrowTime[client]    = 0.0;
     g_fLastSmokeThrowTime[client] = 0.0;
+
     g_bAngleOverride[client]      = false;
     g_fOverrideExpiry[client]     = 0.0;
 
+    // 双向十字交叉清理，也就是只清理和自己相关的
     ClearPlayerMemory(client);
 }
