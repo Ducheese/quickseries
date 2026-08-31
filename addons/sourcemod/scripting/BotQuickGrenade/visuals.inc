@@ -1,4 +1,4 @@
-﻿#if defined _botquickgrenade_visuals_included
+#if defined _botquickgrenade_visuals_included
   #endinput
 #endif
 #define _botquickgrenade_visuals_included
@@ -56,13 +56,145 @@ stock void DrawLandingCircle(const float center[3], float radius, const int colo
 }
 
 /**
- * 格式化输出调试日志到所有玩家聊天栏
+ * 检查真人客户端 viewer 是否正在观察目标 target（第一人称或第三人称视角）
  */
-stock void LogDebug(const char[] format, any ...)
+stock bool IsSpectatingTarget(int viewer, int target)
+{
+    if (!IsClientInGame(viewer) || IsFakeClient(viewer))
+        return false;
+
+    // 若真人活在场上
+    if (IsPlayerAlive(viewer))
+    {
+        return (viewer == target);
+    }
+
+    // 真人处于观察者阵营或已阵亡，获取其当前观察的目标实体索引
+    if (HasEntProp(viewer, Prop_Send, "m_hObserverTarget"))
+    {
+        int obsTarget = GetEntPropEnt(viewer, Prop_Send, "m_hObserverTarget");
+        return (obsTarget == target);
+    }
+
+    return false;
+}
+
+/**
+ * 格式化输出调试日志：仅向正在观察该 Bot 的真人玩家打印聊天栏信息
+ *
+ * @param bot      产生行为的 Bot 实体索引（若 <= 0 则为全服全局事件）
+ * @param format   格式化字符串
+ */
+stock void LogDebug(int bot, const char[] format, any ...)
 {
     if (!GetConVarBool(cvarDebug)) return;
 
     char buffer[256];
-    VFormat(buffer, sizeof(buffer), format, 2);
-    PrintToChatAll("%s", buffer);
+    VFormat(buffer, sizeof(buffer), format, 3);
+
+    if (bot <= 0)
+    {
+        // 全局事件（如 C4 安放/掉落）：广播给所有真人玩家
+        for (int i = 1; i <= MaxClients; i++)
+        {
+            if (IsClientInGame(i) && !IsFakeClient(i))
+            {
+                PrintToChat(i, "%s", buffer);
+            }
+        }
+        return;
+    }
+
+    // 定点事件：仅发送给当前正在观察该 Bot 的真人玩家
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (IsSpectatingTarget(i, bot))
+        {
+            PrintToChat(i, "%s", buffer);
+        }
+    }
+}
+
+/**
+ * 获取玩家当前背包中持有的各类手雷实际备弹数量
+ */
+stock void GetClientGrenadeCounts(int client, int &heCount, int &smokeCount, int &flashCount)
+{
+    heCount = 0;
+    smokeCount = 0;
+    flashCount = 0;
+
+    for (int i = 0; i < 48; i++)
+    {
+        int wep = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", i);
+        if (wep > 0 && IsValidEntity(wep))
+        {
+            char cls[32];
+            GetEntityClassname(wep, cls, sizeof(cls));
+            int ammoType = GetEntProp(wep, Prop_Send, "m_iPrimaryAmmoType");
+            int ammo = (ammoType >= 0) ? GetEntProp(client, Prop_Send, "m_iAmmo", _, ammoType) : 1;
+
+            if (StrEqual(cls, "weapon_hegrenade", false))
+            {
+                heCount += ammo;
+            }
+            else if (StrEqual(cls, "weapon_smokegrenade", false))
+            {
+                smokeCount += ammo;
+            }
+            else if (StrEqual(cls, "weapon_flashbang", false))
+            {
+                flashCount += ammo;
+            }
+        }
+    }
+}
+
+/**
+ * 实时更新正在观战 Bot 的真人玩家 HintText HUD
+ */
+public Action Timer_UpdateSpectatorHUD(Handle timer)
+{
+    if (!GetConVarBool(cvarDebug)) return Plugin_Continue;
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsClientInGame(i) || IsFakeClient(i))
+            continue;
+
+        int target = -1;
+
+        // 若真人玩家已阵亡或处于旁观者阵营，获取其当前观察的目标实体
+        if (!IsPlayerAlive(i))
+        {
+            if (HasEntProp(i, Prop_Send, "m_hObserverTarget"))
+            {
+                target = GetEntPropEnt(i, Prop_Send, "m_hObserverTarget");
+            }
+        }
+
+        if (target > 0 && target <= MaxClients && IsClientInGame(target) && IsPlayerAlive(target) && IsFakeClient(target))
+        {
+            int he, smoke, flash;
+            GetClientGrenadeCounts(target, he, smoke, flash);
+
+            float now = GetGameTime();
+            float cdHe = (now - g_fLastHeThrowTime[target] >= HE_COOLDOWN) ? 0.0 : (HE_COOLDOWN - (now - g_fLastHeThrowTime[target]));
+            float cdSmoke = (now - g_fLastSmokeThrowTime[target] >= SMOKE_COOLDOWN) ? 0.0 : (SMOKE_COOLDOWN - (now - g_fLastSmokeThrowTime[target]));
+            float cdFlash = (now - g_fLastFlashThrowTime[target] >= FLASH_COOLDOWN) ? 0.0 : (FLASH_COOLDOWN - (now - g_fLastFlashThrowTime[target]));
+
+            char hudText[256];
+            Format(hudText, sizeof(hudText), "【观察 Bot: %N】\n高爆手雷 (HE): %d 颗 %s\n战术烟雾 (Smoke): %d 颗 %s\n战术闪光 (Flash): %d 颗 %s",
+                target,
+                he, (he <= 0 ? "(无)" : (cdHe > 0.0 ? "(冷却中)" : "[就绪]")),
+                smoke, (smoke <= 0 ? "(无)" : (cdSmoke > 0.0 ? "(冷却中)" : "[就绪]")),
+                flash, (flash <= 0 ? "(无)" : (cdFlash > 0.0 ? "(冷却中)" : "[就绪]"))
+            );
+
+            PrintHintText(i, "%s", hudText);
+            StopSound(i, SNDCHAN_STATIC, "ui/hint.wav");
+        }
+    }
+
+    return Plugin_Continue;
 }

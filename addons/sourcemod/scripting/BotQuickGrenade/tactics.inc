@@ -251,8 +251,7 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
                 }
             }
         }
-
-    // 1.2 T 阵营 C4 战术
+        // 1.2 T 阵营 C4 战术
         else if (team == CS_TEAM_T)
         {
             // 1.2.1 若 C4 已经安放成功 -> T 方执行「守包延时封烟」：像 HE 一样将烟雾弹精准抛向回防的 CT 掩体/通道
@@ -466,4 +465,177 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
     }
 
     return false;
+}
+
+//========================================================================================
+// 战术闪光弹 (FLASHBANG) 核心门禁与决策引擎
+//========================================================================================
+
+/**
+ * 门禁 1：敌人致盲质量检测
+ * 爆炸点与敌人眼位之间必须视线直通（无实心掩体阻隔），且爆炸点位于敌人视线正前方视锥内 (Dot > 0.0)
+ */
+stock bool CanFlashBlindEnemy(const float flashPos[3], int enemy)
+{
+    float enemyEye[3];
+    GetClientEyePosition(enemy, enemyEye);
+
+    // 1. 视线通达性检查
+    TR_TraceRayFilter(flashPos, enemyEye, MASK_VISIBLE, RayType_EndPoint, TraceFilter_WorldOnly);
+    if (TR_GetFraction() != 1.0)
+        return false;
+
+    // 2. 敌人视线朝向夹角检查（必须处于敌人正面视野内）
+    float enemyAng[3], enemyFwd[3], toFlash[3];
+    GetClientEyeAngles(enemy, enemyAng);
+    GetAngleVectors(enemyAng, enemyFwd, NULL_VECTOR, NULL_VECTOR);
+    NormalizeVector(enemyFwd, enemyFwd);
+
+    SubtractVectors(flashPos, enemyEye, toFlash);
+    NormalizeVector(toFlash, toFlash);
+
+    return (GetVectorDotProduct(enemyFwd, toFlash) > 0.0);
+}
+
+/**
+ * 门禁 2：严苛防自闪检测
+ * 爆炸点与 Bot 自身眼位之间必须有实心掩体阻隔（典型掩体后高抛）；若空旷无遮挡，则距离必须大于 400 且背身
+ */
+stock bool IsFlashSafeFromSelf(int bot, const float flashPos[3])
+{
+    float botEye[3];
+    GetClientEyePosition(bot, botEye);
+
+    TR_TraceRayFilter(flashPos, botEye, MASK_VISIBLE, RayType_EndPoint, TraceFilter_WorldOnly);
+    if (TR_GetFraction() < 1.0)
+    {
+        return true; // 自身与爆炸点之间有掩体遮挡，绝对安全
+    }
+
+    // 若无掩体阻隔，要求距离远 (> FLASH_SELF_SAFE_DIST) 且背身
+    float dist = GetVectorDistance(botEye, flashPos);
+    if (dist <= FLASH_SELF_SAFE_DIST)
+        return false;
+
+    float botAng[3], botFwd[3], toFlash[3];
+    GetClientEyeAngles(bot, botAng);
+    GetAngleVectors(botAng, botFwd, NULL_VECTOR, NULL_VECTOR);
+    NormalizeVector(botFwd, botFwd);
+
+    SubtractVectors(flashPos, botEye, toFlash);
+    NormalizeVector(toFlash, toFlash);
+
+    return (GetVectorDotProduct(botFwd, toFlash) < 0.0);
+}
+
+/**
+ * 门禁 3：严苛防队友检测
+ * 检查爆炸点是否会在强致盲半径 (FLASH_HIT_RADIUS) 内直连并闪瞎任何正视该方向的存活队友
+ */
+stock bool IsTeammateFlashed(int bot, const float flashPos[3])
+{
+    int botTeam = GetClientTeam(bot);
+
+    for (int mate = 1; mate <= MaxClients; mate++)
+    {
+        if (mate == bot || !IsClientInGame(mate) || !IsPlayerAlive(mate) || GetClientTeam(mate) != botTeam)
+            continue;
+
+        float mateEye[3];
+        GetClientEyePosition(mate, mateEye);
+
+        float dist = GetVectorDistance(mateEye, flashPos);
+        if (dist <= FLASH_HIT_RADIUS)
+        {
+            TR_TraceRayFilter(flashPos, mateEye, MASK_VISIBLE, RayType_EndPoint, TraceFilter_WorldOnly);
+            if (TR_GetFraction() == 1.0)
+            {
+                // 射线通畅，进一步检查队友是否面朝闪光
+                float mateAng[3], mateFwd[3], toFlash[3];
+                GetClientEyeAngles(mate, mateAng);
+                GetAngleVectors(mateAng, mateFwd, NULL_VECTOR, NULL_VECTOR);
+                NormalizeVector(mateFwd, mateFwd);
+
+                SubtractVectors(flashPos, mateEye, toFlash);
+                NormalizeVector(toFlash, toFlash);
+
+                if (GetVectorDotProduct(mateFwd, toFlash) > 0.0)
+                {
+                    return true; // 会闪瞎正面直视的队友！
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * 战术闪光弹决策与弹道求解：
+ * 遍历短期记忆库，针对掩体后存活敌人（无直连枪线时）实施高抛破点闪光压制
+ *
+ * @param bot          Bot 实体索引
+ * @param throwAngles  输出求解出的投掷欧拉角
+ * @param landPos      输出闪光弹最终落点坐标
+ * @param outReason    输出触发原因描述
+ * @param maxReasonLen 描述字符串缓冲区大小
+ * @return             有效目标实体索引，若无可行目标返回 -1
+ */
+stock int FindFlashTacticalTarget(int bot, float throwAngles[3], float landPos[3], char[] outReason, int maxReasonLen)
+{
+    if (!IsClientInGame(bot) || !IsPlayerAlive(bot) || IsBotBusyWithC4(bot))
+        return -1;
+
+    int botTeam = GetClientTeam(bot);
+
+    // 敌方存活检查：若敌方全灭，无任何威胁，严禁丢闪
+    if (!HasLivingEnemies(botTeam))
+        return -1;
+
+    float now = GetGameTime();
+    float botEye[3];
+    GetClientEyePosition(bot, botEye);
+
+    // 遍历短期记忆库中掩体后的所有存活敌人（涵盖回防、进点与常规架枪局面）
+    for (int t = 1; t <= MaxClients; t++)
+    {
+        if (!IsClientInGame(t) || !IsPlayerAlive(t) || GetClientTeam(t) == botTeam)
+            continue;
+
+        if (g_fLastPerceivedTime[bot][t] <= 0.0 || (now - g_fLastPerceivedTime[bot][t] > MEMORY_DURATION))
+            continue;
+
+        // 掩体战术限制：必须被掩体阻挡无直连枪线，方可高抛闪光（露头直连优先拿枪对射）
+        if (GetConVarBool(cvarRequireCover) && CanShootTargetDirectly(bot, t))
+            continue;
+
+        float targetPos[3];
+        targetPos = g_vecLastKnownPos[bot][t];
+
+        float dist = GetVectorDistance(botEye, targetPos);
+        if (dist < DIST_MIN || dist > DIST_MAX)
+            continue;
+
+        float dx = targetPos[0] - botEye[0];
+        float dy = targetPos[1] - botEye[1];
+        float yaw = RadToDeg(ArcTangent2(dy, dx));
+
+        float bestPitch;
+        bool hit = FindBestPitchForTarget(bot, targetPos, yaw, bestPitch, landPos, FLASH_HIT_RADIUS);
+        if (hit)
+        {
+            // 三大安全门禁检验：敌人正向有效致盲 + 严苛防自闪 + 友军安全检查 (受 cvarFriendlyFire 控制)
+            bool mateSafe = (!GetConVarBool(cvarFriendlyFire) || !IsTeammateFlashed(bot, landPos));
+
+            if (CanFlashBlindEnemy(landPos, t) && IsFlashSafeFromSelf(bot, landPos) && mateSafe)
+            {
+                throwAngles[0] = bestPitch;
+                throwAngles[1] = yaw;
+                throwAngles[2] = 0.0;
+                Format(outReason, maxReasonLen, "掩体后破点闪光 (敌: %N, 距离: %.0f)", t, dist);
+                return t;
+            }
+        }
+    }
+
+    return -1;
 }

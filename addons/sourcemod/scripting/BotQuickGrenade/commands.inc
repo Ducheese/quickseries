@@ -24,6 +24,12 @@ stock void RegisterBotQuickGrenadeCommands()
         FCVAR_NOTIFY, true, 0.0, true, 1.0
     );
 
+    cvarFlashEnable = CreateConVar(
+        "sm_botqg_flash_enable", "1",
+        "是否启用 Bot 战术闪光弹 (Flashbang) 投掷 AI（1：启用；0：禁用）",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0
+    );
+
     cvarSmokeHp = CreateConVar(
         "sm_botqg_smoke_hp", "35",
         "残血脚底自保烟触发血量阈值（HP <= 设定值时触发）",
@@ -38,13 +44,19 @@ stock void RegisterBotQuickGrenadeCommands()
 
     cvarFriendlyFire = CreateConVar(
         "sm_botqg_check_friendly", "1",
-        "安全检查：落点附近有存活队友时禁止丢雷，防止误伤队友：1=启用，0=禁用",
+        "安全检查：防止误伤或闪白队友（1=启用友军安全检查，0=禁用直接投掷）",
         FCVAR_NOTIFY, true, 0.0, true, 1.0
     );
 
     cvarGiveGrenades = CreateConVar(
         "sm_botqg_give_grenades", "1",
         "是否在 Bot 出生时自动补给全套手雷（1 HE + 1 Smoke + 1 Flash）（1=启用，0=禁用）",
+        FCVAR_NOTIFY, true, 0.0, true, 1.0
+    );
+
+    cvarBlockGrenade = CreateConVar(
+        "sm_botqg_block_native_grenade", "1",
+        "是否阻止 Bot 原生 AI 主动将手雷掏在手上（1=启用拦截，0=允许原生掏雷）：防止 Bot 捏雷裸奔",
         FCVAR_NOTIFY, true, 0.0, true, 1.0
     );
 

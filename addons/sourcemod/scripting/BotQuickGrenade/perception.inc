@@ -83,7 +83,7 @@ stock void UpdateBotVision(int bot)
                 // 首次发现或记忆过期重新看见时输出提示
                 if (now - g_fLastPerceivedTime[bot][t] > 1.5)
                 {
-                    LogDebug("\x04[BotQG - 视觉]\x01 Bot \x03%N\x01 视线发现了敌人 \x05%N\x01 (距离: %.0f, 夹角: %.1f°)", bot, t, dist, angle);
+                    LogDebug(bot, "\x04[BotQG - 视觉]\x01 Bot \x03%N\x01 视线发现了敌人 \x05%N\x01 (距离: %.0f, 夹角: %.1f°)", bot, t, dist, angle);
                 }
 
                 g_fLastPerceivedTime[bot][t] = now;
@@ -151,7 +151,7 @@ stock void ProcessGunfire(int shooter)
             g_fLastPerceivedTime[bot][shooter] = now;
             g_vecLastKnownPos[bot][shooter]    = perceivedPos;
 
-            LogDebug("\x04[BotQG - 听觉]\x01 Bot \x03%N\x01 听到敌人 \x05%N\x01 的枪声%s (距离: %.0f, 误差散布: %.0f)",
+            LogDebug(bot, "\x04[BotQG - 听觉]\x01 Bot \x03%N\x01 听到敌人 \x05%N\x01 的枪声%s (距离: %.0f, 误差散布: %.0f)",
                 bot, shooter, isSilenced ? "(消音)" : "", dist, SOUND_DISPERSION_GUNFIRE);
         }
     }
@@ -195,7 +195,7 @@ stock void ProcessFootstep(int walker)
                 g_fLastPerceivedTime[bot][walker] = now;
                 g_vecLastKnownPos[bot][walker]    = perceivedPos;
 
-                LogDebug("\x04[BotQG - 脚步]\x01 Bot \x03%N\x01 听到了敌人 \x05%N\x01 的脚步声 (距离: %.0f)", bot, walker, dist);
+                LogDebug(bot, "\x04[BotQG - 脚步]\x01 Bot \x03%N\x01 听到了敌人 \x05%N\x01 的脚步声 (距离: %.0f)", bot, walker, dist);
             }
         }
     }
@@ -219,7 +219,7 @@ stock void ProcessHurt(int victim, int attacker)
     g_fLastPerceivedTime[victim][attacker] = GetGameTime();
     g_vecLastKnownPos[victim][attacker]    = attackerPos;
 
-    LogDebug("\x04[BotQG - 受击]\x01 Bot \x03%N\x01 被敌人 \x05%N\x01 击中，立刻感知其精确位置!", victim, attacker);
+    LogDebug(victim, "\x04[BotQG - 受击]\x01 Bot \x03%N\x01 被敌人 \x05%N\x01 击中，立刻感知其精确位置!", victim, attacker);
 }
 
 /**

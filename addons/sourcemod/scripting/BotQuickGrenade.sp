@@ -68,6 +68,7 @@ public void OnMapStart()
     {
         g_fLastHeThrowTime[i]    = 0.0;    // HE
         g_fLastSmokeThrowTime[i] = 0.0;    // Smoke
+        g_fLastFlashThrowTime[i] = 0.0;    // Flash
 
         g_bAngleOverride[i]      = false;
         g_fOverrideExpiry[i]     = 0.0;
@@ -77,10 +78,19 @@ public void OnMapStart()
     ClearAllMemory();
 }
 
+public void OnClientPutInServer(int client)
+{
+    if (IsFakeClient(client))
+    {
+        SDKHook(client, SDKHook_WeaponSwitch, Hook_BotWeaponSwitch);
+    }
+}
+
 public void OnClientDisconnect(int client)
 {
     g_fLastHeThrowTime[client]    = 0.0;
     g_fLastSmokeThrowTime[client] = 0.0;
+    g_fLastFlashThrowTime[client] = 0.0;
 
     g_bAngleOverride[client]      = false;
     g_fOverrideExpiry[client]     = 0.0;

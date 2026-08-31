@@ -25,12 +25,57 @@ stock void RegisterBotQuickGrenadeHooks()
 
     AddNormalSoundHook(Hook_NormalSound);
 
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (IsClientInGame(i) && IsFakeClient(i))
+        {
+            SDKHook(i, SDKHook_WeaponSwitch, Hook_BotWeaponSwitch);
+        }
+    }
+
     CreateTimer(BOT_THINK_INTERVAL, Timer_BotThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    CreateTimer(0.5, Timer_UpdateSpectatorHUD, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
 stock void UnregisterBotQuickGrenadeHooks()
 {
     RemoveNormalSoundHook(Hook_NormalSound);
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (IsClientInGame(i) && IsFakeClient(i))
+        {
+            SDKUnhook(i, SDKHook_WeaponSwitch, Hook_BotWeaponSwitch);
+        }
+    }
+}
+
+/**
+ * 武器切换守门员钩子：彻底阻止 Bot 原生 AI 主动将手雷掏到手上捏着逛街
+ */
+public Action Hook_BotWeaponSwitch(int client, int weapon)
+{
+    if (!GetConVarBool(cvarBlockGrenade))
+        return Plugin_Continue;
+
+    if (IsFakeClient(client) && IsValidEntity(weapon))
+    {
+        char cls[32];
+        GetEntityClassname(weapon, cls, sizeof(cls));
+
+        // 如果试图切换到手雷（HE / Smoke / Flash）
+        if (StrContains(cls, "grenade", false) != -1 || StrContains(cls, "flashbang", false) != -1)
+        {
+            // 若当前并非处于 QuickGrenade 快速投掷状态，一律拦截原生 AI 的掏雷动作！
+            if (GetFeatureStatus(FeatureType_Native, "QuickGrenade_IsCombat") == FeatureStatus_Available
+                && !QuickGrenade_IsCombat(client))
+            {
+                return Plugin_Handled; // 彻底阻止 Bot 原生 AI 掏雷捏在手里！
+            }
+        }
+    }
+
+    return Plugin_Continue;
 }
 
 /**
@@ -38,7 +83,7 @@ stock void UnregisterBotQuickGrenadeHooks()
  */
 stock bool IsAnyGrenadeEnabled()
 {
-    return (GetConVarBool(cvarHeEnable) || GetConVarBool(cvarSmokeEnable));
+    return (GetConVarBool(cvarHeEnable) || GetConVarBool(cvarSmokeEnable) || GetConVarBool(cvarFlashEnable));
 }
 
 //========================================================================================
@@ -89,7 +134,7 @@ public void Event_BombPlanted(Handle event, const char[] name, bool dontBroadcas
     }
 
     ProcessBombPlanted(pos);
-    LogDebug("\x04[BotQG - C4]\x01 C4 已安放于坐标 (%.0f, %.0f, %.0f)", pos[0], pos[1], pos[2]);
+    LogDebug(0, "\x04[BotQG - C4]\x01 C4 已安放于坐标 (%.0f, %.0f, %.0f)", pos[0], pos[1], pos[2]);
 }
 
 public void Event_BombDefused(Handle event, const char[] name, bool dontBroadcast)
@@ -115,13 +160,13 @@ public void Event_BombDropped(Handle event, const char[] name, bool dontBroadcas
     }
 
     ProcessBombDropped(pos);
-    LogDebug("\x04[BotQG - C4]\x01 C4 已掉落在地 (%.0f, %.0f, %.0f)", pos[0], pos[1], pos[2]);
+    LogDebug(0, "\x04[BotQG - C4]\x01 C4 已掉落在地 (%.0f, %.0f, %.0f)", pos[0], pos[1], pos[2]);
 }
 
 public void Event_BombPickup(Handle event, const char[] name, bool dontBroadcast)
 {
     ProcessBombPickup();
-    LogDebug("\x04[BotQG - C4]\x01 掉落的 C4 已被拾起");
+    LogDebug(0, "\x04[BotQG - C4]\x01 掉落的 C4 已被拾起");
 }
 
 public void Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
@@ -340,6 +385,7 @@ public Action Timer_BotThink(Handle timer)
 
     bool heEnabled    = GetConVarBool(cvarHeEnable);
     bool smokeEnabled = GetConVarBool(cvarSmokeEnable);
+    bool flashEnabled = GetConVarBool(cvarFlashEnable);
     bool visualize    = GetConVarBool(cvarDebug);
     float now         = GetGameTime();
 
@@ -353,6 +399,14 @@ public Action Timer_BotThink(Handle timer)
 
         // 错峰分片轮询：将全服 Bot 平摊至 5 帧周期内执行，平滑 CPU 射线计算负载
         if ((bot % 5) != (s_iThinkTick % 5))
+            continue;
+
+        // 0. 手雷可用性快速前置门禁：若该 Bot 当前没有任何可用且冷却完毕的手雷，直接跳过全部感知与思考，节省 CPU 算力
+        bool canSmoke = (smokeEnabled && (now - g_fLastSmokeThrowTime[bot] >= SMOKE_COOLDOWN) && BotHasGrenade(bot, "weapon_smokegrenade"));
+        bool canHe    = (heEnabled && (now - g_fLastHeThrowTime[bot] >= HE_COOLDOWN) && BotHasGrenade(bot, "weapon_hegrenade"));
+        bool canFlash = (flashEnabled && (now - g_fLastFlashThrowTime[bot] >= FLASH_COOLDOWN) && BotHasGrenade(bot, "weapon_flashbang"));
+
+        if (!canSmoke && !canHe && !canFlash)
             continue;
 
         // 1. 刷新视觉感知
@@ -373,9 +427,7 @@ public Action Timer_BotThink(Handle timer)
         //================================================================================
         // 支线 A：智能战术烟雾弹 (Smoke Grenade) —— 三级战术掩护（优先级最高）
         //================================================================================
-        if (!threwGrenade && smokeEnabled
-            && (now - g_fLastSmokeThrowTime[bot] >= SMOKE_COOLDOWN)
-            && BotHasGrenade(bot, "weapon_smokegrenade"))
+        if (!threwGrenade && canSmoke)
         {
             float smokeAngles[3], smokeLandPos[3];
             char smokeReason[128];
@@ -399,17 +451,15 @@ public Action Timer_BotThink(Handle timer)
                     DrawLandingCircle(smokeLandPos, SMOKE_HIT_RADIUS, COLOR_SMOKE, BEAM_LIFE);
                 }
 
-                LogDebug("\x04[BotQG - 烟雾]\x01 Bot \x03%N\x01 触发战术封烟! (原因: \x05%s\x01, Pitch: \x04%.1f°\x01, Yaw: \x04%.1f°\x01)",
+                LogDebug(bot, "\x04[BotQG - 烟雾]\x01 Bot \x03%N\x01 触发战术封烟! (原因: \x05%s\x01, Pitch: \x04%.1f°\x01, Yaw: \x04%.1f°\x01)",
                     bot, smokeReason, smokeAngles[0], smokeAngles[1]);
             }
         }
 
         //================================================================================
-        // 支线 B：高爆手雷 (HE Grenade) —— 掩体高抛
+        // 支线 B：高爆手雷 (HE Grenade) —— 掩体高抛（优先级中）
         //================================================================================
-        if (!threwGrenade && heEnabled
-            && (now - g_fLastHeThrowTime[bot] >= HE_COOLDOWN)
-            && BotHasGrenade(bot, "weapon_hegrenade"))
+        if (!threwGrenade && canHe)
         {
             float throwAngles[3], landPos[3];
             int target = FindTargetAndComputeAngles(bot, throwAngles, landPos);
@@ -424,8 +474,32 @@ public Action Timer_BotThink(Handle timer)
                     DrawLandingCircle(landPos, HE_HIT_RADIUS, COLOR_HE, BEAM_LIFE);
                 }
 
-                LogDebug("\x04[BotQG - 投掷]\x01 Bot \x03%N\x01 朝掩体后 \x05%N\x01 触发高抛砸雷! (Pitch: \x04%.1f°\x01, Yaw: \x04%.1f°\x01)",
+                LogDebug(bot, "\x04[BotQG - 投掷]\x01 Bot \x03%N\x01 朝掩体后 \x05%N\x01 触发高抛砸雷! (Pitch: \x04%.1f°\x01, Yaw: \x04%.1f°\x01)",
                     bot, target, throwAngles[0], throwAngles[1]);
+            }
+        }
+
+        //================================================================================
+        // 支线 C：战术闪光弹 (Flashbang) —— 掩体破点与回防致盲（优先级低）
+        //================================================================================
+        if (!threwGrenade && canFlash)
+        {
+            float flashAngles[3], flashLandPos[3];
+            char flashReason[128];
+            int target = FindFlashTacticalTarget(bot, flashAngles, flashLandPos, flashReason, sizeof(flashReason));
+
+            if (target > 0 && ExecuteBotThrow(bot, "weapon_flashbang", flashAngles, now, g_fLastFlashThrowTime[bot]))
+            {
+                threwGrenade = true;
+
+                if (visualize)
+                {
+                    SimulateGrenadeTrajectoryWithAngles(bot, flashAngles, flashLandPos, true, COLOR_FLASH);
+                    DrawLandingCircle(flashLandPos, FLASH_HIT_RADIUS, COLOR_FLASH, BEAM_LIFE);
+                }
+
+                LogDebug(bot, "\x04[BotQG - 闪光]\x01 Bot \x03%N\x01 触发战术闪光! (原因: \x05%s\x01, Pitch: \x04%.1f°\x01, Yaw: \x04%.1f°\x01)",
+                    bot, flashReason, flashAngles[0], flashAngles[1]);
             }
         }
     }

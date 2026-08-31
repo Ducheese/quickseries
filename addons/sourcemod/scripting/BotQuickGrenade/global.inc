@@ -55,10 +55,11 @@ stock const int COLOR_HE[4]       = {255,  50,  50, 220};  // 红色：HE 弹道
 #define C4_TEAM_SMOKE_COOLDOWN      12.0    // 阵营 C4 战术封烟共享冷却时间（秒，防止多队友扎堆重复封烟）
 stock const int COLOR_SMOKE[4]    = { 50, 220,  50, 220};  // 绿色：Smoke 弹道与落点
 
-// --- 战术闪光弹 (Flashbang) 专属参数（预留）---
+// --- 战术闪光弹 (Flashbang) 专属参数 ---
 #define FLASH_COOLDOWN              10.0    // Flash 投掷冷却时间（秒）
 #define FLASH_HIT_RADIUS            500.0   // Flash 有效强致盲判定半径（CS:S 源码中强致盲范围为 500~600 码）
-stock const int COLOR_FLASH[4]    = {  0, 200, 255, 220};  // 蓝色：Flash 弹道与落点
+#define FLASH_SELF_SAFE_DIST        400.0   // Flash 无掩体防自闪最小安全距离（HU）
+stock const int COLOR_FLASH[4]    = {  0, 200, 255, 220};  // 亮蓝色：Flash 弹道与落点
 
 // --- 可视化渲染参数 ---
 #define CIRCLE_SEGS                 24      // 落点判定圆分段数
@@ -76,12 +77,14 @@ stock const float SIM_MAXS[3]     = { 2.0,  2.0,  2.0};
 // 手雷功能独立开关 ConVar Handles
 ConVar cvarHeEnable;
 ConVar cvarSmokeEnable;
+ConVar cvarFlashEnable;
 
 // 战术配置与通用 ConVar Handles
 ConVar cvarSmokeHp;
 ConVar cvarRequireCover;
 ConVar cvarFriendlyFire;
 ConVar cvarGiveGrenades;
+ConVar cvarBlockGrenade;
 ConVar cvarPlayerPreview;
 ConVar cvarDebug;
 ConVar cvarGravity;
@@ -92,6 +95,7 @@ int g_iBeamSprite = -1;
 // 各手雷投掷冷却时间戳
 float g_fLastHeThrowTime[MAXPLAYERS + 1]    = {0.0};         // 上次投掷 HE 时间戳
 float g_fLastSmokeThrowTime[MAXPLAYERS + 1] = {0.0};         // 上次投掷 Smoke 时间戳
+float g_fLastFlashThrowTime[MAXPLAYERS + 1] = {0.0};         // 上次投掷 Flash 时间戳
 
 // C4 战术全局状态
 bool  g_bIsC4Planted                        = false;         // 场上是否存在已安放的 C4
