@@ -57,8 +57,12 @@ stock const int COLOR_SMOKE[4]    = { 50, 220,  50, 220};  // 绿色：Smoke 弹
 
 // --- 战术闪光弹 (Flashbang) 专属参数 ---
 #define FLASH_COOLDOWN              10.0    // Flash 投掷冷却时间（秒）
-#define FLASH_HIT_RADIUS            500.0   // Flash 有效强致盲判定半径（CS:S 源码中强致盲范围为 500~600 码）
-#define FLASH_SELF_SAFE_DIST        400.0   // Flash 无掩体防自闪最小安全距离（HU）
+#define FLASH_HIT_RADIUS            500.0   // Flash 弹道落点有效强致盲判定半径（HU，CS:S 源码 500 HU 处致盲强度仍达 ~83%）
+#define FLASH_BLIND_DOT_MIN         0.6     // 敌人有效强致盲最小朝向 Dot 阈值（对应 CS:S 源码强致盲第一档：dot >= 0.6，约 53° 正对锥）
+#define FLASH_SELF_BACK_DOT_MAX    -0.2     // 自身背身防自闪 Dot 上限（对应 CS:S 源码背身最弱档阈值：dot < -0.2）
+#define FLASH_SELF_SAFE_DIST_BACK   1000.0  // 无掩体背身防自闪安全距离（HU，源码背身档 fadeHold < 0.5s 对应 dist > 1000 HU，恰在 DIST_MAX 边缘）
+#define FLASH_SELF_SAFE_DIST_FRONT  2800.0  // 无掩体非背身防自闪安全距离（HU，源码直视强致盲档 fadeTime < 0.5s 需 dist > 2800 HU，超出投雷上限，等效绝不丢）
+#define FLASH_TEAM_MATE_DOT_MIN     0.0     // 队友受闪危险视线 Dot 阈值（dot > 0.0 即面朝闪光半球视作有误伤致盲风险）
 stock const int COLOR_FLASH[4]    = {  0, 200, 255, 220};  // 亮蓝色：Flash 弹道与落点
 
 // --- 可视化渲染参数 ---
