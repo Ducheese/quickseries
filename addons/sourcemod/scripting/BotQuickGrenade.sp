@@ -69,6 +69,7 @@ public void OnMapStart()
         g_fLastHeThrowTime[i]    = 0.0;    // HE
         g_fLastSmokeThrowTime[i] = 0.0;    // Smoke
         g_fLastFlashThrowTime[i] = 0.0;    // Flash
+        g_fFlashEndTime[i]       = 0.0;    // Flash End Time
 
         g_bAngleOverride[i]      = false;
         g_fOverrideExpiry[i]     = 0.0;
@@ -91,6 +92,7 @@ public void OnClientDisconnect(int client)
     g_fLastHeThrowTime[client]    = 0.0;
     g_fLastSmokeThrowTime[client] = 0.0;
     g_fLastFlashThrowTime[client] = 0.0;
+    g_fFlashEndTime[client]       = 0.0;
 
     g_bAngleOverride[client]      = false;
     g_fOverrideExpiry[client]     = 0.0;

@@ -47,7 +47,10 @@ stock const int COLOR_HE[4]       = {255,  50,  50, 220};  // 红色：HE 弹道
 #define SMOKE_HIT_RADIUS            220.0   // Smoke 有效落点判定半径
 #define SMOKE_HEALTH_THRESHOLD      35      // 残血自保脚底烟触发血量阈值 (HP <= 35)
 #define SMOKE_INTERPOLATION_RATIO   0.45    // 弹夹打空/换弹时视线中点烟的插值比例（45% 偏向己方一侧）
-#define SMOKE_SELF_OFFSET           80.0    // 残血脚底自保烟沿视线前推距离
+#define SMOKE_SELF_OFFSET           80.0    // 残血/致盲脚底自保烟沿视线前推距离
+#define SMOKE_SELF_MIN_THREAT_DIST  350.0   // 残血脚底自保烟允许投掷的最小威胁距离（HU，小于该距离且手中有弹未换弹时禁止拔烟送死）
+#define SMOKE_BLIND_MIN_DURATION    1.5     // 触发被闪致盲脱困脚底烟的最小剩余致盲时长（秒）
+#define SMOKE_BLIND_MIN_ALPHA       200.0   // 触发被闪致盲脱困脚底烟的最小致盲不透明度（满白 255，排除余光轻微晃眼）
 #define C4_DEFUSE_APPROACH_DIST     400.0   // CT 靠近 C4 准备封烟拆包的最大搜索距离
 #define C4_PLANT_SELF_OFFSET        50.0    // T 持包进点身前铺烟推移距离
 #define C4_PLANTER_COVER_MIN_DIST   100.0   // T 掩护队友下包最小安全投掷距离
@@ -100,6 +103,7 @@ int g_iBeamSprite = -1;
 float g_fLastHeThrowTime[MAXPLAYERS + 1]    = {0.0};         // 上次投掷 HE 时间戳
 float g_fLastSmokeThrowTime[MAXPLAYERS + 1] = {0.0};         // 上次投掷 Smoke 时间戳
 float g_fLastFlashThrowTime[MAXPLAYERS + 1] = {0.0};         // 上次投掷 Flash 时间戳
+float g_fFlashEndTime[MAXPLAYERS + 1]       = {0.0};         // 玩家当前闪光致盲结束的时间戳
 
 // C4 战术全局状态
 bool  g_bIsC4Planted                        = false;         // 场上是否存在已安放的 C4

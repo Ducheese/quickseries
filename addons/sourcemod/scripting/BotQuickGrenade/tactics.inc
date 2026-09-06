@@ -360,7 +360,22 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
     }
 
     //====================================================================================
-    // 优先级 2：残血脚底自保烟 (HP <= 设定值)
+    // 优先级 2：被闪致盲脱困脚底烟 (Bot 遭受强闪光致盲)
+    // 战术逻辑：Bot 视野全白失去瞄准开枪能力，立即在脚底铺设浓烟屏障阻断敌方枪线并掩护视力恢复
+    //====================================================================================
+    if (!hasTarget && IsBotFlashed(bot))
+    {
+        float now = GetGameTime();
+        smokeTarget[0] = botPos[0] + fwd[0] * SMOKE_SELF_OFFSET;
+        smokeTarget[1] = botPos[1] + fwd[1] * SMOKE_SELF_OFFSET;
+        smokeTarget[2] = botPos[2];
+        hasTarget = true;
+        Format(outReason, maxReasonLen, "被闪致盲脱困脚底烟 (剩余致盲: %.1fs)", g_fFlashEndTime[bot] - now);
+    }
+
+    //====================================================================================
+    // 优先级 3：残血脚底自保烟 (HP <= 设定值)
+    // 战术限制：若最近敌人太近 (< SMOKE_SELF_MIN_THREAT_DIST) 且手中武器有弹未在换弹，禁止当脸拔烟送死，优先持枪对射
     //====================================================================================
     if (!hasTarget)
     {
@@ -369,8 +384,10 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
 
         if (hp <= hpThreshold)
         {
-            bool hasThreat = false;
+            float nearestThreatDist = MAX_SEARCH_DIST;
+            int nearestThreat = -1;
             float now = GetGameTime();
+
             for (int t = 1; t <= MaxClients; t++)
             {
                 if (!IsClientInGame(t) || !IsPlayerAlive(t) || GetClientTeam(t) == team)
@@ -378,24 +395,42 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
 
                 if (g_fLastPerceivedTime[bot][t] > 0.0 && (now - g_fLastPerceivedTime[bot][t] <= MEMORY_DURATION))
                 {
-                    hasThreat = true;
-                    break;
+                    float d = GetVectorDistance(botPos, g_vecLastKnownPos[bot][t]);
+                    if (d < nearestThreatDist)
+                    {
+                        nearestThreatDist = d;
+                        nearestThreat = t;
+                    }
                 }
             }
 
-            if (hasThreat)
+            if (nearestThreat > 0)
             {
-                smokeTarget[0] = botPos[0] + fwd[0] * SMOKE_SELF_OFFSET;
-                smokeTarget[1] = botPos[1] + fwd[1] * SMOKE_SELF_OFFSET;
-                smokeTarget[2] = botPos[2];
-                hasTarget = true;
-                Format(outReason, maxReasonLen, "残血自保脚底烟 (HP: %d)", hp);
+                int activeWep = GetEntPropEnt(bot, Prop_Send, "m_hActiveWeapon");
+                int clip1 = 0;
+                bool inReload = false;
+
+                if (activeWep > 0 && IsValidEntity(activeWep))
+                {
+                    clip1 = GetEntProp(activeWep, Prop_Send, "m_iClip1");
+                    inReload = (HasEntProp(activeWep, Prop_Data, "m_bInReload") && GetEntProp(activeWep, Prop_Data, "m_bInReload") == 1);
+                }
+
+                // 贴脸防暴毙保护：若威胁敌人太近且枪中有弹、未在换弹，禁止掏烟送死，优先对枪
+                if (!(nearestThreatDist < SMOKE_SELF_MIN_THREAT_DIST && clip1 > 0 && !inReload))
+                {
+                    smokeTarget[0] = botPos[0] + fwd[0] * SMOKE_SELF_OFFSET;
+                    smokeTarget[1] = botPos[1] + fwd[1] * SMOKE_SELF_OFFSET;
+                    smokeTarget[2] = botPos[2];
+                    hasTarget = true;
+                    Format(outReason, maxReasonLen, "残血自保脚底烟 (HP: %d, 威胁敌: %N, 距离: %.0f)", hp, nearestThreat, nearestThreatDist);
+                }
             }
         }
     }
 
     //====================================================================================
-    // 优先级 3：弹夹打空 / 换弹视线中点烟 (Clip == 0)
+    // 优先级 4：弹夹打空 / 换弹视线中点烟 (Clip == 0)
     //====================================================================================
     if (!hasTarget)
     {

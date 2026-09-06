@@ -223,10 +223,25 @@ stock void ProcessHurt(int victim, int attacker)
 }
 
 /**
- * 玩家死亡清空记忆
+ * 检查 Bot 当前是否处于严重致盲状态（用于烟雾弹脱困自保）
+ * 要求处于致盲期内且剩余致盲时长达到阈值（排除余光轻微晃眼或即将复明的场景）
+ */
+stock bool IsBotFlashed(int bot, float minRemainingDuration = SMOKE_BLIND_MIN_DURATION)
+{
+    float now = GetGameTime();
+    if (g_fFlashEndTime[bot] <= now)
+        return false;
+
+    return ((g_fFlashEndTime[bot] - now) >= minRemainingDuration);
+}
+
+/**
+ * 玩家死亡或断开清空记忆
  */
 stock void ClearPlayerMemory(int client)
 {
+    g_fFlashEndTime[client] = 0.0;
+
     for (int b = 1; b <= MaxClients; b++)
     {
         g_fLastPerceivedTime[b][client] = 0.0;  // 别人对我的记忆（列）
@@ -243,6 +258,8 @@ stock void ClearAllMemory()
 {
     for (int i = 1; i <= MaxClients; i++)
     {
+        g_fFlashEndTime[i] = 0.0;
+
         for (int j = 1; j <= MaxClients; j++)
         {
             g_fLastPerceivedTime[i][j] = 0.0;

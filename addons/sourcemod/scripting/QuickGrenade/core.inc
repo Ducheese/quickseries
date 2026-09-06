@@ -123,6 +123,7 @@ bool TriggerQuickGrenade(int client, const char[] grenadeClassname, bool isHoldC
  */
 void ReleaseQuickGrenade(int client)
 {
+    if (!client) client = 1;
     if (!IsValidClient(client, true)) return;
 
     g_bCmdHolding[client] = false;

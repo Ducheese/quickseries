@@ -13,6 +13,7 @@ stock void RegisterBotQuickGrenadeHooks()
     HookEvent("player_spawn", Event_PlayerSpawn);
     HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_hurt", Event_PlayerHurt);
+    HookEvent("player_blind", Event_PlayerBlind);
     HookEvent("weapon_fire", Event_WeaponFire);
 
     HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
@@ -175,6 +176,8 @@ public void Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadcas
 
     if (client < 1 || client > MaxClients || !IsClientInGame(client)) return;
 
+    g_fFlashEndTime[client] = 0.0;
+
     if (IsFakeClient(client) && GetConVarBool(cvarGiveGrenades))
     {
         // 延迟 0.1 秒等武器槽初始化完成再发雷
@@ -189,6 +192,21 @@ public void Event_PlayerDeath(Handle event, const char[] name, bool dontBroadcas
     {
         // 双向十字清理
         ClearPlayerMemory(victim);
+    }
+}
+
+public void Event_PlayerBlind(Handle event, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(GetEventInt(event, "userid"));
+    if (client < 1 || client > MaxClients || !IsClientInGame(client)) return;
+
+    float duration = GetEntPropFloat(client, Prop_Send, "m_flFlashDuration");
+    float maxAlpha = GetEntPropFloat(client, Prop_Send, "m_flFlashMaxAlpha");
+
+    if (duration > 0.0 && maxAlpha >= SMOKE_BLIND_MIN_ALPHA)
+    {
+        g_fFlashEndTime[client] = GetGameTime() + duration;
+        LogDebug(client, "\x04[BotQG - 致盲]\x01 Bot \x03%N\x01 遭受强闪光致盲! (持续: \x04%.1fs\x01, Alpha: \x05%.0f\x01)", client, duration, maxAlpha);
     }
 }
 
