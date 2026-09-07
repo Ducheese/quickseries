@@ -18,6 +18,9 @@
 
 #include <quickgrenade>
 
+// 武器画像与 cfg 配置（role 发现 cfg 优先；本体换图加载一份自有拷贝，见 OnMapStart）
+#include <quickgrenade_profile>
+
 #include "QuickGrenade/global"     // 全局定义与变量
 #include "QuickGrenade/helper"     // 工具与辅助函数
 #include "QuickGrenade/core"       // 核心引雷与投掷逻辑
@@ -69,6 +72,9 @@ public void OnPluginStart()
 public void OnMapStart()
 {
     g_bfreezetime = false;
+
+    // 加载武器画像配置（本插件自有拷贝；cfg 修改后下张图生效）
+    QG_LoadWeaponProfilesConfig();
 
     for (int i = 1; i <= MaxClients; i++)
     {

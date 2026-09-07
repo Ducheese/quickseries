@@ -45,7 +45,10 @@ stock int QG_GetGrenadeRole(int wep)
 }
 
 /**
- * 寻找玩家背包中指定战术角色的首个有弹手雷实体
+ * 寻找玩家背包中指定战术角色的首个有弹手雷实体（只认底层弹药序号）
+ *
+ * 新代码优先用 <quickgrenade_profile> 的 QG_FindGrenadeByRoleEx（cfg classname→role
+ * 优先，全新弹药序号的自定义雷也能发现）；本函数保留给不需要 cfg 的轻量调用。
  *
  * @param client    玩家 Client Index
  * @param role      手雷战术角色（GRENADE_ROLE_HE, GRENADE_ROLE_FLASH, GRENADE_ROLE_SMOKE）

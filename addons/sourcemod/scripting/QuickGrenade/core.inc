@@ -148,7 +148,7 @@ bool TriggerQuickGrenadeByRole(int client, int role, bool isHoldCmd)
         return false;
     }
 
-    int grenadeEnt = QG_FindGrenadeByRole(client, role);
+    int grenadeEnt = QG_FindGrenadeByRoleEx(client, role);
     if (grenadeEnt <= 0)
     {
         return false;
@@ -227,7 +227,7 @@ bool TriggerQuickGrenadeByPriority(int client, bool isHoldCmd)
         if (role == GRENADE_ROLE_UNKNOWN)
             continue;
 
-        int priorityEnt = QG_FindGrenadeByRole(client, role);
+        int priorityEnt = QG_FindGrenadeByRoleEx(client, role);
         if (priorityEnt > 0)
             return TriggerQuickGrenade(client, priorityEnt, isHoldCmd);
     }
