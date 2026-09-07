@@ -42,6 +42,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
     CreateNative("QuickGrenade_IsCombat", Native_IsCombat);
     CreateNative("QuickGrenade_GetState", Native_GetState);
     CreateNative("QuickGrenade_Trigger", Native_Trigger);
+    CreateNative("QuickGrenade_TriggerByRole", Native_TriggerByRole);
     CreateNative("QuickGrenade_Cancel", Native_Cancel);
     RegPluginLibrary("quickgrenade");
     return APLRes_Success;
@@ -58,6 +59,8 @@ public void OnPluginStart()
     cvarThrowDelayTime = CreateConVar("sm_quickgrenade_throw_delay_time", "0.6", "松开引雷后，等待投掷动作完成及实体发射再切回武器的时间（单位：秒，必须大于0.15秒）", FCVAR_NOTIFY, true, 0.2, true, 3.0);
     cvarAutoThrowTime = CreateConVar("sm_quickgrenade_auto_throw_time", "0.25", "通过单次触发命令（非 +cmd 长按）时，自动引雷多久后松手投掷（单位：秒）", FCVAR_NOTIFY, true, 0.1, true, 2.0);
     cvarForbiddenList = CreateConVar("sm_quickgrenade_forbidden", "weapon_minigun", "需要禁用触发快速手雷的武器名单", FCVAR_NOTIFY);
+    cvarFixViewModel = CreateConVar("sm_quickgrenade_fix_viewmodel", "0", "引雷时是否修复双视图模型显示（1：强制显示0号v模并隐藏1号；0：不干预，1号保持原样）", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+    cvarPriority = CreateConVar("sm_quickgrenade_priority", "FSH", "战术手雷优先级编码（F=闪光 S=烟雾 H=高爆，按顺序耗尽）", FCVAR_NOTIFY);
 
     RegisterQuickGrenadeCommands();
     RegisterQuickGrenadeHooks();
@@ -119,7 +122,19 @@ public int Native_Trigger(Handle plugin, int numParams)
     GetNativeString(2, grenadeClass, sizeof(grenadeClass));
     bool isHold = GetNativeCell(3);
 
-    return TriggerQuickGrenade(client, grenadeClass, isHold);
+    return TriggerQuickGrenadeByClass(client, grenadeClass, isHold);
+}
+
+public int Native_TriggerByRole(Handle plugin, int numParams)
+{
+    int client = GetNativeCell(1);
+    if (!IsValidClient(client, true))
+        return false;
+
+    int role = GetNativeCell(2);
+    bool isHold = GetNativeCell(3);
+
+    return TriggerQuickGrenadeByRole(client, role, isHold);
 }
 
 public int Native_Cancel(Handle plugin, int numParams)

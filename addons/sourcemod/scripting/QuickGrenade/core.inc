@@ -8,14 +8,14 @@
 //========================================================================================
 
 /**
- * 触发快速手雷流程
+ * 触发快速手雷流程（内部统一由手雷实体驱动，调用方负责按类名或按角色定位实体）
  *
- * @param client            客户端索引
- * @param grenadeClassname  目标手雷类名（如 weapon_hegrenade）
- * @param isHoldCmd         是否为 +cmd 长按模式
- * @return                  true 触发成功，false 失败
+ * @param client        客户端索引
+ * @param grenadeEnt    目标手雷实体索引
+ * @param isHoldCmd     是否为 +cmd 长按模式
+ * @return              true 触发成功，false 失败
  */
-bool TriggerQuickGrenade(int client, const char[] grenadeClassname, bool isHoldCmd)
+bool TriggerQuickGrenade(int client, int grenadeEnt, bool isHoldCmd)
 {
     if (!GetConVarBool(cvarEnable)) return false;
     if (!client) client = 1;
@@ -30,11 +30,22 @@ bool TriggerQuickGrenade(int client, const char[] grenadeClassname, bool isHoldC
         return false;
     }
 
-    // 检查玩家背包中是否拥有对应手雷且备弹大于0
-    int grenadeEnt = FindPlayerGrenade(client, grenadeClassname);
+    // 实体合法性 + 手雷备弹检查（定位已由调用方完成，此处只做最终确认）
     if (grenadeEnt <= 0 || !IsValidEntity(grenadeEnt))
     {
-        return false; // 玩家没有该类手雷，静默退出不打断当前武器
+        return false;
+    }
+
+    int ammoType = GetEntProp(grenadeEnt, Prop_Send, "m_iPrimaryAmmoType");
+    if (ammoType < 0)
+    {
+        return false; // 无弹药序号的不是雷，直接拒绝（调用方已保证，此处为闭环断言）
+    }
+
+    int ammo = GetEntProp(client, Prop_Send, "m_iAmmo", _, ammoType);
+    if (ammo <= 0)
+    {
+        return false; // 该雷备弹为空，静默退出不打断当前武器
     }
 
     int curActiveWeapon = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
@@ -61,8 +72,8 @@ bool TriggerQuickGrenade(int client, const char[] grenadeClassname, bool isHoldC
         SetEntProp(client, Prop_Send, "m_iFOV", Fov[client]);
     }
 
-    // 机瞄/特殊视图模型修复：确保手雷v模能够正常渲染
-    if (IsValidViewModelEntity(client, ClientVM3[client][0]) && IsValidViewModelEntity(client, ClientVM3[client][1]))
+    // 机瞄/特殊视图模型修复：确保手雷v模能够正常渲染（开关关闭时整块跳过，1号v模保持原样不强制换回0号）
+    if (GetConVarBool(cvarFixViewModel) && IsValidViewModelEntity(client, ClientVM3[client][0]) && IsValidViewModelEntity(client, ClientVM3[client][1]))
     {
         int entEffects = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
         int entEffects2 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
@@ -82,7 +93,6 @@ bool TriggerQuickGrenade(int client, const char[] grenadeClassname, bool isHoldC
     isCombat[client] = true;
     g_PlayerState[client] = STATE_HOLDING;
     g_iActiveGrenadeEnt[client] = grenadeEnt;
-    strcopy(g_sGrenadeClass[client], sizeof(g_sGrenadeClass[]), grenadeClassname);
     g_fHoldStartTime[client] = GetGameTime();
     g_bCmdHolding[client] = isHoldCmd;
 
@@ -114,6 +124,115 @@ bool TriggerQuickGrenade(int client, const char[] grenadeClassname, bool isHoldC
     }
 
     return true;
+}
+
+/**
+ * 按手雷战术角色触发快速手雷（加枪雷只要复用原版弹药序号即自动命中，无需硬编码类名）
+ *
+ * @param client    客户端索引
+ * @param role      手雷战术角色（GRENADE_ROLE_HE, GRENADE_ROLE_FLASH, GRENADE_ROLE_SMOKE）
+ * @param isHoldCmd 是否为 +cmd 长按模式
+ * @return          true 触发成功，false 失败
+ */
+bool TriggerQuickGrenadeByRole(int client, int role, bool isHoldCmd)
+{
+    if (!GetConVarBool(cvarEnable)) return false;
+    if (!client) client = 1;
+
+    // 前置守门员：存活、冻结时间、已有动作互斥直接拦截，杜绝无意义的背包遍历
+    if (!IsValidClient(client, true) || g_bfreezetime || isCombat[client]) return false;
+    if (g_PlayerState[client] != STATE_IDLE) return false;
+
+    if (GetFeatureStatus(FeatureType_Native, "QuickMelee_IsCombat") == FeatureStatus_Available && QuickMelee_IsCombat(client))
+    {
+        return false;
+    }
+
+    int grenadeEnt = QG_FindGrenadeByRole(client, role);
+    if (grenadeEnt <= 0)
+    {
+        return false;
+    }
+
+    return TriggerQuickGrenade(client, grenadeEnt, isHoldCmd);
+}
+
+/**
+ * 按武器类名触发快速手雷（精确匹配，行为与旧版 TriggerQuickGrenade(client, classname) 完全一致）
+ *
+ * @param client        客户端索引
+ * @param classname     手雷武器类名（如 weapon_hegrenade）
+ * @param isHoldCmd     是否为 +cmd 长按模式
+ * @return              true 触发成功，false 失败
+ */
+bool TriggerQuickGrenadeByClass(int client, const char[] classname, bool isHoldCmd)
+{
+    if (!GetConVarBool(cvarEnable)) return false;
+    if (!client) client = 1;
+
+    if (!IsValidClient(client, true) || g_bfreezetime || isCombat[client]) return false;
+    if (g_PlayerState[client] != STATE_IDLE) return false;
+
+    if (GetFeatureStatus(FeatureType_Native, "QuickMelee_IsCombat") == FeatureStatus_Available && QuickMelee_IsCombat(client))
+    {
+        return false;
+    }
+
+    if (classname[0] == '\0')
+        return false;
+
+    int grenadeEnt = FindPlayerGrenade(client, classname);
+    if (grenadeEnt <= 0)
+    {
+        return false;
+    }
+
+    return TriggerQuickGrenade(client, grenadeEnt, isHoldCmd);
+}
+
+/**
+ * 按战术优先级触发快速手雷（convar 配置顺序，高优先级耗尽才用低优先级）
+ *
+ * @param client    客户端索引
+ * @param isHoldCmd 是否为 +cmd 长按模式
+ * @return          true 触发成功，false 失败（三种雷全无/全空）
+ */
+bool TriggerQuickGrenadeByPriority(int client, bool isHoldCmd)
+{
+    if (!GetConVarBool(cvarEnable)) return false;
+    if (!client) client = 1;
+
+    if (!IsValidClient(client, true) || g_bfreezetime || isCombat[client]) return false;
+    if (g_PlayerState[client] != STATE_IDLE) return false;
+
+    if (GetFeatureStatus(FeatureType_Native, "QuickMelee_IsCombat") == FeatureStatus_Available && QuickMelee_IsCombat(client))
+    {
+        return false;
+    }
+
+    // 优先级编码：F=闪光 S=烟雾 H=高爆，按字符顺序耗尽，未知字符跳过（如 "FSH"）
+    char priority[16];
+    GetConVarString(cvarPriority, priority, sizeof(priority));
+
+    int len = strlen(priority);
+    for (int i = 0; i < len; i++)
+    {
+        int role = GRENADE_ROLE_UNKNOWN;
+        switch (priority[i])
+        {
+            case 'F', 'f': role = GRENADE_ROLE_FLASH;
+            case 'S', 's': role = GRENADE_ROLE_SMOKE;
+            case 'H', 'h': role = GRENADE_ROLE_HE;
+        }
+        if (role == GRENADE_ROLE_UNKNOWN)
+            continue;
+
+        int priorityEnt = QG_FindGrenadeByRole(client, role);
+        if (priorityEnt > 0)
+            return TriggerQuickGrenade(client, priorityEnt, isHoldCmd);
+    }
+
+    return false;
 }
 
 /**

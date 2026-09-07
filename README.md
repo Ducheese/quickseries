@@ -74,6 +74,7 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | **高爆手雷** | `weapon_hegrenade` | `bind v +sm_quickfrag` / `+sm_quickhe` | `sm_quickfrag` / `sm_quickhe` |
 | **烟雾弹** | `weapon_smokegrenade` | `bind v +sm_quicksmoke` | `sm_quicksmoke` |
 | **闪光弹** | `weapon_flashbang` | `bind v +sm_quickflash` | `sm_quickflash` |
+| **战术优先级** | 按 `sm_quickgrenade_priority` 顺序耗尽 | `bind g +sm_quicktac` | `sm_quicktac` |
 
 ---
 
@@ -97,6 +98,8 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickgrenade_throw_delay_time` | `0.6` | 松开引雷后等待投掷完成再切武器的时间（秒，必须 > 0.15s） |
 | `sm_quickgrenade_auto_throw_time` | `0.25` | 单次触发指令时自动引雷多久后投掷（秒） |
 | `sm_quickgrenade_forbidden` | `"weapon_minigun"` | 禁用快速手雷的武器黑名单 |
+| `sm_quickgrenade_fix_viewmodel` | `0` | 引雷时是否修复双视图模型（1：强制显示0号v模并隐藏1号；0：不干预） |
+| `sm_quickgrenade_priority` | `"FSH"` | 战术手雷优先级编码（F=闪光 S=烟雾 H=高爆，按顺序耗尽） |
 
 ---
 
@@ -122,8 +125,11 @@ native bool QuickGrenade_IsCombat(int client);
 // 获取玩家当前手雷状态枚举 (STATE_IDLE, STATE_HOLDING, STATE_THROWING, STATE_SWITCHING)
 native QuickGrenadeState QuickGrenade_GetState(int client);
 
-// 手动为玩家触发快速手雷
+// 手动为玩家触发快速手雷（类名精确匹配，行为不变，老插件无需重编）
 native bool QuickGrenade_Trigger(int client, const char[] grenadeClassname, bool isHold = false);
+
+// 按战术角色触发快速手雷（GRENADE_ROLE_HE/SMOKE/FLASH，加枪雷复用原版弹药序号即自动命中）
+native bool QuickGrenade_TriggerByRole(int client, int role, bool isHold = false);
 
 // 取消快速手雷引雷并切回原武器
 native void QuickGrenade_Cancel(int client);

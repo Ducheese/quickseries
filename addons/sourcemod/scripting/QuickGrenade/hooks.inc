@@ -33,7 +33,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
             int grenade = g_iActiveGrenadeEnt[client];
             if (grenade > 0 && IsValidEntity(grenade))
             {
-                if (GetEntProp(grenade, Prop_Send, "m_bPinPulled") != 0)
+                if (HasEntProp(grenade, Prop_Send, "m_bPinPulled") && GetEntProp(grenade, Prop_Send, "m_bPinPulled") != 0)
                 {
                     SetEntPropFloat(grenade, Prop_Send, "m_flTimeWeaponIdle", GetGameTime() + 1.0);
                     SetEntPropFloat(grenade, Prop_Send, "m_flNextPrimaryAttack", GetGameTime() + 1.0);

@@ -25,16 +25,13 @@ int FindPlayerGrenade(int client, const char[] targetClassname)
             GetEntityClassname(weapon, classname, sizeof(classname));
             if (StrEqual(classname, targetClassname, false))
             {
+                // 是雷就有弹药序号：无弹药序号的不是雷，直接跳过；备弹无条件必查
                 int ammoType = GetEntProp(weapon, Prop_Send, "m_iPrimaryAmmoType");
-                if (ammoType >= 0)
-                {
-                    int ammo = GetEntProp(client, Prop_Send, "m_iAmmo", _, ammoType);
-                    if (ammo > 0)
-                    {
-                        return weapon;
-                    }
-                }
-                else
+                if (ammoType < 0)
+                    continue;
+
+                int ammo = GetEntProp(client, Prop_Send, "m_iAmmo", _, ammoType);
+                if (ammo > 0)
                 {
                     return weapon;
                 }
@@ -113,7 +110,6 @@ void ResetClientQuickGrenade(int client)
     g_bCmdHolding[client] = false;
     PreWeapon[client] = -1;
     g_iActiveGrenadeEnt[client] = -1;
-    g_sGrenadeClass[client][0] = '\0';
 }
 
 /**

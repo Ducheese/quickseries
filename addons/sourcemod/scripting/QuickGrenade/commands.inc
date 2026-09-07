@@ -26,18 +26,23 @@ void RegisterQuickGrenadeCommands()
     RegConsoleCmd("sm_quickflash", Cmd_QuickFlash, "触发快速闪光弹（点按自动投掷）");
     RegConsoleCmd("+sm_quickflash", Cmd_QuickFlash_Plus, "长按快速闪光弹（按住拔销引雷，松开投掷）");
     RegConsoleCmd("-sm_quickflash", Cmd_QuickFlash_Minus, "松开快速闪光弹（投掷）");
+
+    // 注册战术优先级手雷 (按 sm_quickgrenade_priority 顺序耗尽，高优先级丢完才丢低优先级)
+    RegConsoleCmd("sm_quicktac", Cmd_QuickTac, "触发战术优先级手雷（点按自动投掷）");
+    RegConsoleCmd("+sm_quicktac", Cmd_QuickTac_Plus, "长按战术优先级手雷（按住拔销引雷，松开投掷）");
+    RegConsoleCmd("-sm_quicktac", Cmd_QuickTac_Minus, "松开战术优先级手雷（投掷）");
 }
 
 // --- 高爆手雷 (HE Grenade) ---
 public Action Cmd_QuickFrag(int client, int args)
 {
-    TriggerQuickGrenade(client, "weapon_hegrenade", false);
+    TriggerQuickGrenadeByRole(client, GRENADE_ROLE_HE, false);
     return Plugin_Handled;
 }
 
 public Action Cmd_QuickFrag_Plus(int client, int args)
 {
-    TriggerQuickGrenade(client, "weapon_hegrenade", true);
+    TriggerQuickGrenadeByRole(client, GRENADE_ROLE_HE, true);
     return Plugin_Handled;
 }
 
@@ -50,13 +55,13 @@ public Action Cmd_QuickFrag_Minus(int client, int args)
 // --- 烟雾弹 (Smoke Grenade) ---
 public Action Cmd_QuickSmoke(int client, int args)
 {
-    TriggerQuickGrenade(client, "weapon_smokegrenade", false);
+    TriggerQuickGrenadeByRole(client, GRENADE_ROLE_SMOKE, false);
     return Plugin_Handled;
 }
 
 public Action Cmd_QuickSmoke_Plus(int client, int args)
 {
-    TriggerQuickGrenade(client, "weapon_smokegrenade", true);
+    TriggerQuickGrenadeByRole(client, GRENADE_ROLE_SMOKE, true);
     return Plugin_Handled;
 }
 
@@ -69,17 +74,36 @@ public Action Cmd_QuickSmoke_Minus(int client, int args)
 // --- 闪光弹 (Flashbang) ---
 public Action Cmd_QuickFlash(int client, int args)
 {
-    TriggerQuickGrenade(client, "weapon_flashbang", false);
+    TriggerQuickGrenadeByRole(client, GRENADE_ROLE_FLASH, false);
     return Plugin_Handled;
 }
 
 public Action Cmd_QuickFlash_Plus(int client, int args)
 {
-    TriggerQuickGrenade(client, "weapon_flashbang", true);
+    TriggerQuickGrenadeByRole(client, GRENADE_ROLE_FLASH, true);
     return Plugin_Handled;
 }
 
 public Action Cmd_QuickFlash_Minus(int client, int args)
+{
+    ReleaseQuickGrenade(client);
+    return Plugin_Handled;
+}
+
+// --- 战术优先级手雷 (按 convar 顺序耗尽) ---
+public Action Cmd_QuickTac(int client, int args)
+{
+    TriggerQuickGrenadeByPriority(client, false);
+    return Plugin_Handled;
+}
+
+public Action Cmd_QuickTac_Plus(int client, int args)
+{
+    TriggerQuickGrenadeByPriority(client, true);
+    return Plugin_Handled;
+}
+
+public Action Cmd_QuickTac_Minus(int client, int args)
 {
     ReleaseQuickGrenade(client);
     return Plugin_Handled;

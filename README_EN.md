@@ -74,6 +74,7 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | **HE Grenade** | `weapon_hegrenade` | `bind v +sm_quickfrag` / `+sm_quickhe` | `sm_quickfrag` / `sm_quickhe` |
 | **Smoke Grenade** | `weapon_smokegrenade` | `bind v +sm_quicksmoke` | `sm_quicksmoke` |
 | **Flashbang** | `weapon_flashbang` | `bind v +sm_quickflash` | `sm_quickflash` |
+| **Tactical priority** | Drained in `sm_quickgrenade_priority` order | `bind g +sm_quicktac` | `sm_quicktac` |
 
 ---
 
@@ -97,6 +98,8 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickgrenade_throw_delay_time` | `0.6` | Delay after release before switching back (seconds, must be >0.15s) |
 | `sm_quickgrenade_auto_throw_time` | `0.25` | Auto throw delay for single-tap commands (seconds) |
 | `sm_quickgrenade_forbidden` | `"weapon_minigun"` | Blacklist of weapons that block quick grenade |
+| `sm_quickgrenade_fix_viewmodel` | `0` | Fix dual viewmodels on pull (1: force show viewmodel 0 and hide 1; 0: leave alone) |
+| `sm_quickgrenade_priority` | `"FSH"` | Tactical grenade priority code (F=flash S=smoke H=HE, drained in order) |
 
 ---
 
@@ -122,8 +125,11 @@ native bool QuickGrenade_IsCombat(int client);
 // Get current grenade state (STATE_IDLE, STATE_HOLDING, STATE_THROWING, STATE_SWITCHING)
 native QuickGrenadeState QuickGrenade_GetState(int client);
 
-// Force a quick grenade pull/throw
+// Force a quick grenade pull/throw (exact classname match, unchanged, no recompile needed)
 native bool QuickGrenade_Trigger(int client, const char[] grenadeClassname, bool isHold = false);
+
+// Force a quick grenade pull/throw by tactical role (GRENADE_ROLE_HE/SMOKE/FLASH; custom grenades reusing stock ammo types are picked up automatically)
+native bool QuickGrenade_TriggerByRole(int client, int role, bool isHold = false);
 
 // Cancel cooking and reset
 native void QuickGrenade_Cancel(int client);
