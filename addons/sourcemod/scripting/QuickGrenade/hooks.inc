@@ -71,25 +71,13 @@ public void OnEntityCreated(int entity, const char[] classname)
 
 public void OnEntitySpawned2(int entity)
 {
-    int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwner");
-
-    if (owner > 0 && owner <= MaxClients)
-    {
-        if (GetEntProp(entity, Prop_Send, "m_nViewModelIndex") == 0)
-        {
-            ClientVM3[owner][0] = entity;
-        }
-        else if (GetEntProp(entity, Prop_Send, "m_nViewModelIndex") == 1)
-        {
-            ClientVM3[owner][1] = entity;
-        }
-    }
+    TrackClientViewModel(entity);
 }
 
 public void Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 {
     int client = GetClientOfUserId(GetEventInt(event, "userid"));
-    if (client >= 1 && client <= MaxClients)
+    if (IsValidClient(client))
     {
         Fov[client] = GetEntProp(client, Prop_Send, "m_iFOV");
         ResetClientQuickGrenade(client);
@@ -99,7 +87,7 @@ public void Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadcas
 public void Event_PlayerDeath(Handle event, const char[] name, bool dontBroadcast)
 {
     int client = GetClientOfUserId(GetEventInt(event, "userid"));
-    if (client >= 1 && client <= MaxClients)
+    if (IsValidClient(client))
     {
         ResetClientQuickGrenade(client);
     }

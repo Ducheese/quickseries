@@ -113,6 +113,57 @@ void ResetClientQuickGrenade(int client)
 }
 
 /**
+ * 重置指定客户端的双 v 模登记（OnMapStart / OnClientDisconnect 共用）
+ */
+stock void ResetClientViewModels(int client)
+{
+    ClientVM3[client][0] = -1;
+    ClientVM3[client][1] = -1;
+}
+
+/**
+ * 登记单个 predicted_viewmodel 到所属玩家的 0/1 槽位
+ *
+ * OnEntitySpawned2 与 BackfillLateLoadState 共用，判据唯一真源。
+ * 存活不要求（死亡玩家 v 模仍在，重生建新模会覆盖）；TV 排除。
+ */
+stock void TrackClientViewModel(int entity)
+{
+    int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwner");
+    if (IsValidClient(owner))
+    {
+        if (GetEntProp(entity, Prop_Send, "m_nViewModelIndex") == 0)
+            ClientVM3[owner][0] = entity;
+        else if (GetEntProp(entity, Prop_Send, "m_nViewModelIndex") == 1)
+            ClientVM3[owner][1] = entity;
+    }
+}
+
+/**
+ * 中途加载补课：回填在线存活玩家的 Fov 与双 v 模登记
+ *
+ * OnEntityCreated / player_spawn 追不上已在线玩家，这里扫一遍补上。
+ * Fov 只补存活者（死亡者等下次出生事件补，反正死了也扔不了雷）。
+ * 全局数组缺省 0，扫不到的槽位 IsValidViewModelEntity 本来就不过，无需先清零。
+ */
+stock void BackfillLateLoadState()
+{
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (!IsValidClient(client, true))
+            continue;
+
+        Fov[client] = GetEntProp(client, Prop_Send, "m_iFOV");
+    }
+
+    int vm = -1;
+    while ((vm = FindEntityByClassname(vm, "predicted_viewmodel")) != -1)
+    {
+        TrackClientViewModel(vm);
+    }
+}
+
+/**
  * 校验视图模型实体合法性
  *
  * @param client    玩家 Client Index

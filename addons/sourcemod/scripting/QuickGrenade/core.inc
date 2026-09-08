@@ -72,20 +72,41 @@ bool TriggerQuickGrenade(int client, int grenadeEnt, bool isHoldCmd)
         SetEntProp(client, Prop_Send, "m_iFOV", Fov[client]);
     }
 
-    // 机瞄/特殊视图模型修复：确保手雷v模能够正常渲染（开关关闭时整块跳过，1号v模保持原样不强制换回0号）
-    if (GetConVarBool(cvarFixViewModel) && IsValidViewModelEntity(client, ClientVM3[client][0]) && IsValidViewModelEntity(client, ClientVM3[client][1]))
+    // 机瞄/特殊视图模型修复
+    int fixMode = QG_ViewModelFixMode();
+    if (fixMode != 0 && IsValidViewModelEntity(client, ClientVM3[client][0]) && IsValidViewModelEntity(client, ClientVM3[client][1]))
     {
-        int entEffects = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
-        int entEffects2 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
-
-        if (entEffects == EF_NODRAW && entEffects2 == 0)
+        bool showSlot1 = false;
+        if (fixMode == 2)
         {
-            entEffects2 |= EF_NODRAW;
-            SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", entEffects2);
+            // 按雷 v 模槽位分流（详见 cfg 注释）；加枪分支只在异常态扶一把，
+            // 正常 hold 态镜像条件不成立直接跳过
+            char grenadeCls[64];
+            GetEntityClassname(grenadeEnt, grenadeCls, sizeof(grenadeCls));
+            showSlot1 = (QG_GetGrenadeViewSlot(grenadeCls) == 1);
+        }
 
-            entEffects2 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
-            entEffects2 &= ~EF_NODRAW;
-            SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", entEffects2);
+        if (!showSlot1)
+        {
+            int fx0 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
+            int fx1 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
+
+            if (fx0 == EF_NODRAW && fx1 == 0)
+            {
+                SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", fx1 | EF_NODRAW);
+                SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", fx0 & ~EF_NODRAW);
+            }
+        }
+        else
+        {
+            int fx1 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
+            int fx0 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
+
+            if (fx1 == EF_NODRAW && fx0 == 0)
+            {
+                SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", fx0 | EF_NODRAW);
+                SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", fx1 & ~EF_NODRAW);
+            }
         }
     }
 

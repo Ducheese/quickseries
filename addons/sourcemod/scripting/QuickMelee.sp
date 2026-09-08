@@ -56,6 +56,7 @@ public void OnPluginStart()
     cvarBackType = CreateConVar("sm_quickmelee_back_type", "2", "挥完刀之后切到什么武器（2：切回原来武器；1：优先切到主武器，其次副武器；0：保持持刀）", FCVAR_NOTIFY, true, 0.0, true, 2.0);
     cvarSwitchWeaponTime = CreateConVar("sm_quickmelee_switch_weapon_time", "0.4", "从触发快速近战到切回武器的时间间隔（单位：秒）", FCVAR_NOTIFY, true, 0.1);
     cvarForbiddenList = CreateConVar("sm_quickmelee_forbidden", "weapon_minigun", "需要禁用触发快速近战的武器名单", FCVAR_NOTIFY);
+    cvarFixViewModel = CreateConVar("sm_quickmelee_fix_viewmodel", "1", "挥刀时是否修复双视图模型（0：不干预；1：藏1号亮0号；2：原版刀藏1亮0、加枪刀藏0亮1）", FCVAR_NOTIFY, true, 0.0, true, 2.0);
 
     RegisterQuickMeleeCommands();
     RegisterQuickMeleeHooks();

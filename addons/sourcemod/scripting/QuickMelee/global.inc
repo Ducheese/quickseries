@@ -32,3 +32,4 @@ ConVar cvarHitType;
 ConVar cvarBackType;
 ConVar cvarSwitchWeaponTime;
 ConVar cvarForbiddenList;
+ConVar cvarFixViewModel;

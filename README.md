@@ -88,6 +88,7 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickmelee_back_type` | `2` | 挥刀后切枪（2：切回原武器；1：优先主武器其次副武器；0：保持持刀） |
 | `sm_quickmelee_switch_weapon_time` | `0.4` | 从触发到切回武器的时间间隔（秒） |
 | `sm_quickmelee_forbidden` | `"weapon_minigun"` | 禁用快速近战的武器黑名单 |
+| `sm_quickmelee_fix_viewmodel` | `1` | 挥刀时是否修复双视图模型（0：不干预；1：藏1号亮0号；2：原版刀藏1亮0、加枪刀藏0亮1） |
 
 ### `cfg/sourcemod/plugin.quickgrenade.cfg`
 | ConVar | 默认值 | 说明 |
@@ -98,7 +99,6 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickgrenade_throw_delay_time` | `0.6` | 松开引雷后等待投掷完成再切武器的时间（秒，必须 > 0.15s） |
 | `sm_quickgrenade_auto_throw_time` | `0.25` | 单次触发指令时自动引雷多久后投掷（秒） |
 | `sm_quickgrenade_forbidden` | `"weapon_minigun"` | 禁用快速手雷的武器黑名单 |
-| `sm_quickgrenade_fix_viewmodel` | `0` | 引雷时是否修复双视图模型（1：强制显示0号v模并隐藏1号；0：不干预） |
 | `sm_quickgrenade_priority` | `"FSH"` | 战术手雷优先级编码（F=闪光 S=烟雾 H=高爆，按顺序耗尽） |
 
 ---

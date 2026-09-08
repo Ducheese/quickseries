@@ -37,5 +37,4 @@ ConVar cvarMinPullTime;
 ConVar cvarThrowDelayTime;
 ConVar cvarAutoThrowTime;
 ConVar cvarForbiddenList;
-ConVar cvarFixViewModel;
 ConVar cvarPriority;

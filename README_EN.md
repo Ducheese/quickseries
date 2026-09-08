@@ -88,6 +88,7 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickmelee_back_type` | `2` | Weapon to switch back after swing (2: previous weapon, 1: primary then secondary, 0: keep knife) |
 | `sm_quickmelee_switch_weapon_time` | `0.4` | Delay from trigger to weapon switch-back (seconds) |
 | `sm_quickmelee_forbidden` | `"weapon_minigun"` | Blacklist of weapons that block quick melee |
+| `sm_quickmelee_fix_viewmodel` | `1` | Fix dual viewmodels on melee (0: leave alone; 1: hide 1 show 0; 2: stock knife hides 1/shows 0, custom knives hide 0/show 1) |
 
 ### `cfg/sourcemod/plugin.quickgrenade.cfg`
 | ConVar | Default | Description |
@@ -98,7 +99,6 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickgrenade_throw_delay_time` | `0.6` | Delay after release before switching back (seconds, must be >0.15s) |
 | `sm_quickgrenade_auto_throw_time` | `0.25` | Auto throw delay for single-tap commands (seconds) |
 | `sm_quickgrenade_forbidden` | `"weapon_minigun"` | Blacklist of weapons that block quick grenade |
-| `sm_quickgrenade_fix_viewmodel` | `0` | Fix dual viewmodels on pull (1: force show viewmodel 0 and hide 1; 0: leave alone) |
 | `sm_quickgrenade_priority` | `"FSH"` | Tactical grenade priority code (F=flash S=smoke H=HE, drained in order) |
 
 ---

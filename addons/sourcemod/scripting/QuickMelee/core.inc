@@ -66,20 +66,42 @@ bool PerformQuickMelee(int client)
         SetEntProp(client, Prop_Send, "m_iFOV", Fov[client]);
     }
 
-    // 机瞄/特殊视图模型修复：确保刀v模能够正常渲染
-    if (IsValidViewModelEntity(client, ClientVM3[client][0]) && IsValidViewModelEntity(client, ClientVM3[client][1]))
+    // 机瞄/特殊视图模型修复（sm_quickmelee_fix_viewmodel：0=不干预；
+    // 1=统一藏 1 号亮 0 号；2=原版刀藏 1 显 0、加枪刀藏 0 显 1，加枪=类名非 weapon_knife）
+    int fixMode = GetConVarInt(cvarFixViewModel);
+    if (fixMode != 0 && IsValidViewModelEntity(client, ClientVM3[client][0]) && IsValidViewModelEntity(client, ClientVM3[client][1]))
     {
-        int entEffects = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
-        int entEffects2 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
-
-        if (entEffects == EF_NODRAW && entEffects2 == 0)
+        bool showSlot1 = false;
+        if (fixMode == 2)
         {
-            entEffects2 |= EF_NODRAW;
-            SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", entEffects2);
+            // 刀的品种少，原版只有 weapon_knife 一个类名，换皮不换槽，直接按类名分流
+            //（雷那边不行：改物理不改类名的原版雷太多，才需要画像字段）
+            char meleeCls[32];
+            GetEntityClassname(melee, meleeCls, sizeof(meleeCls));
+            showSlot1 = !StrEqual(meleeCls, "weapon_knife", false);
+        }
 
-            entEffects2 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
-            entEffects2 &= ~EF_NODRAW;
-            SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", entEffects2);
+        if (!showSlot1)
+        {
+            int fx0 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
+            int fx1 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
+
+            if (fx0 == EF_NODRAW && fx1 == 0)
+            {
+                SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", fx1 | EF_NODRAW);
+                SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", fx0 & ~EF_NODRAW);
+            }
+        }
+        else
+        {
+            int fx1 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
+            int fx0 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
+
+            if (fx1 == EF_NODRAW && fx0 == 0)
+            {
+                SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", fx0 | EF_NODRAW);
+                SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", fx1 & ~EF_NODRAW);
+            }
         }
     }
 

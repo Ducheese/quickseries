@@ -62,11 +62,14 @@ public void OnPluginStart()
     cvarThrowDelayTime = CreateConVar("sm_quickgrenade_throw_delay_time", "0.6", "Delay after release before switching back (seconds, must be >0.15 to avoid Holster wiping projectile)", FCVAR_NOTIFY, true, 0.2, true, 3.0);
     cvarAutoThrowTime = CreateConVar("sm_quickgrenade_auto_throw_time", "0.25", "Auto throw delay for single tap commands (seconds)", FCVAR_NOTIFY, true, 0.1, true, 2.0);
     cvarForbiddenList = CreateConVar("sm_quickgrenade_forbidden", "weapon_minigun", "Blacklist of weapons that block quick grenade", FCVAR_NOTIFY);
-    cvarFixViewModel = CreateConVar("sm_quickgrenade_fix_viewmodel", "0", "Whether to fix dual viewmodels on pull (1: force show viewmodel 0 and hide 1; 0: leave alone)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     cvarPriority = CreateConVar("sm_quickgrenade_priority", "FSH", "Tactical grenade priority code (F=flash S=smoke H=HE, drained in order)", FCVAR_NOTIFY);
 
     RegisterQuickGrenadeCommands();
     RegisterQuickGrenadeHooks();
+
+    // Late-load catch-up: OnMapStart won't run, load profiles here (reloaded on map start, idempotent)
+    QG_LoadWeaponProfilesConfig();
+    BackfillLateLoadState();
 }
 
 public void OnMapStart()
@@ -79,8 +82,7 @@ public void OnMapStart()
     for (int i = 1; i <= MaxClients; i++)
     {
         ResetClientQuickGrenade(i);
-        ClientVM3[i][0] = -1;
-        ClientVM3[i][1] = -1;
+        ResetClientViewModels(i);
     }
 }
 
@@ -92,8 +94,7 @@ public void OnClientPutInServer(int client)
 public void OnClientDisconnect(int client)
 {
     ResetClientQuickGrenade(client);
-    ClientVM3[client][0] = -1;
-    ClientVM3[client][1] = -1;
+    ResetClientViewModels(client);
 }
 
 //========================================================================================

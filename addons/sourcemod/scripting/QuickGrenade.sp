@@ -62,11 +62,14 @@ public void OnPluginStart()
     cvarThrowDelayTime = CreateConVar("sm_quickgrenade_throw_delay_time", "0.6", "松开引雷后，等待投掷动作完成及实体发射再切回武器的时间（单位：秒，必须大于0.15秒）", FCVAR_NOTIFY, true, 0.2, true, 3.0);
     cvarAutoThrowTime = CreateConVar("sm_quickgrenade_auto_throw_time", "0.25", "通过单次触发命令（非 +cmd 长按）时，自动引雷多久后松手投掷（单位：秒）", FCVAR_NOTIFY, true, 0.1, true, 2.0);
     cvarForbiddenList = CreateConVar("sm_quickgrenade_forbidden", "weapon_minigun", "需要禁用触发快速手雷的武器名单", FCVAR_NOTIFY);
-    cvarFixViewModel = CreateConVar("sm_quickgrenade_fix_viewmodel", "0", "引雷时是否修复双视图模型显示（1：强制显示0号v模并隐藏1号；0：不干预，1号保持原样）", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     cvarPriority = CreateConVar("sm_quickgrenade_priority", "FSH", "战术手雷优先级编码（F=闪光 S=烟雾 H=高爆，按顺序耗尽）", FCVAR_NOTIFY);
 
     RegisterQuickGrenadeCommands();
     RegisterQuickGrenadeHooks();
+
+    // 中途加载时 OnMapStart 不跑，画像在这里先加载一份（换图时 OnMapStart 会重载，幂等无副作用）
+    QG_LoadWeaponProfilesConfig();
+    BackfillLateLoadState();
 }
 
 public void OnMapStart()
@@ -79,8 +82,7 @@ public void OnMapStart()
     for (int i = 1; i <= MaxClients; i++)
     {
         ResetClientQuickGrenade(i);
-        ClientVM3[i][0] = -1;
-        ClientVM3[i][1] = -1;
+        ResetClientViewModels(i);
     }
 }
 
@@ -92,8 +94,7 @@ public void OnClientPutInServer(int client)
 public void OnClientDisconnect(int client)
 {
     ResetClientQuickGrenade(client);
-    ClientVM3[client][0] = -1;
-    ClientVM3[client][1] = -1;
+    ResetClientViewModels(client);
 }
 
 //========================================================================================

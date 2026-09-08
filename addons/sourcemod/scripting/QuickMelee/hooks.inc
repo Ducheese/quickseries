@@ -75,7 +75,7 @@ public void OnEntitySpawned2(int entity)
 public void Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 {
     int client = GetClientOfUserId(GetEventInt(event, "userid"));
-    if (client >= 1 && client <= MaxClients)
+    if (IsValidClient(client))
     {
         Fov[client] = GetEntProp(client, Prop_Send, "m_iFOV");
         ResetClientQuickMelee(client);
@@ -85,7 +85,7 @@ public void Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadcas
 public void Event_PlayerDeath(Handle event, const char[] name, bool dontBroadcast)
 {
     int client = GetClientOfUserId(GetEventInt(event, "userid"));
-    if (client >= 1 && client <= MaxClients)
+    if (IsValidClient(client))
     {
         ResetClientQuickMelee(client);
     }

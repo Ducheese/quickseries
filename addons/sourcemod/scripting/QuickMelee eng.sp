@@ -56,6 +56,7 @@ public void OnPluginStart()
     cvarBackType = CreateConVar("sm_quickmelee_back_type", "2", "Weapon to switch back after melee (2: previous weapon, 1: primary > secondary, 0: keep knife)", FCVAR_NOTIFY, true, 0.0, true, 2.0);
     cvarSwitchWeaponTime = CreateConVar("sm_quickmelee_switch_weapon_time", "0.4", "Delay from trigger to weapon switch-back (seconds)", FCVAR_NOTIFY, true, 0.1);
     cvarForbiddenList = CreateConVar("sm_quickmelee_forbidden", "weapon_minigun", "Blacklist of weapons that block quick melee", FCVAR_NOTIFY);
+    cvarFixViewModel = CreateConVar("sm_quickmelee_fix_viewmodel", "1", "Fix dual viewmodels on melee (0: leave alone; 1: hide 1 show 0; 2: stock knife hides 1/shows 0, custom knives hide 0/show 1)", FCVAR_NOTIFY, true, 0.0, true, 2.0);
 
     RegisterQuickMeleeCommands();
     RegisterQuickMeleeHooks();
