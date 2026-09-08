@@ -74,5 +74,14 @@ stock void RegisterBotQuickGrenadeCommands()
 
     cvarGravity = FindConVar("sv_gravity");
 
+    RegAdminCmd("sm_botquickgrenade_reload", Command_ReloadProfiles, ADMFLAG_CONFIG, "重载 BotQuickGrenade 武器物理与战术画像配置");
+
     AutoExecConfig(true, "plugin.botquickgrenade");
+}
+
+public Action Command_ReloadProfiles(int client, int args)
+{
+    QG_LoadWeaponProfilesConfig();
+    ReplyToCommand(client, "[BotQuickGrenade] Profiles reloaded for this plugin (body side takes effect next map).");
+    return Plugin_Handled;
 }

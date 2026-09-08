@@ -101,6 +101,18 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickgrenade_forbidden` | `"weapon_minigun"` | 禁用快速手雷的武器黑名单 |
 | `sm_quickgrenade_priority` | `"FSH"` | 战术手雷优先级编码（F=闪光 S=烟雾 H=高爆，按顺序耗尽） |
 
+### `configs/quickgrenade_weapons.cfg`（武器画像，改后换图生效）
+
+| 配置项 | 默认值 | 说明 |
+| :--- | :---: | :--- |
+| `Settings.viewmodel_fix_mode` | `0` | 视图修复：0=不干预（原版/HAN）；1=统一藏1亮0（老加枪/老机瞄）；2=按雷v模槽位分流（新加枪/新机瞄） |
+| 条目 `role` | `he` | 战术角色：flash 弹药当 HE 使时配 `he`（唯一用途） |
+| 条目 `detonate` | `fuse` | `touch`=触碰即炸（燃烧瓶/RPG 类） |
+| 条目 `safe_dist` / `range` | 缺省 | 安全距离（低于不扔）/理论射程（超出 Bot 放弃）；填 0 等同未配 |
+| 条目 `viewmodel` | `0` | 雷v模槽位，仅 mode 2 有效；新加枪定制雷填 `1` |
+
+BotQuickGrenade 已全量接入画像（HE/烟/闪求解、预筛、HUD 计数），原版服缺省行为见上表。
+
 ---
 
 ## 开发者 API

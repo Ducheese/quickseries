@@ -129,20 +129,23 @@ stock void GetClientGrenadeCounts(int client, int &heCount, int &smokeCount, int
         int wep = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", i);
         if (wep > 0 && IsValidEntity(wep))
         {
-            char cls[32];
-            GetEntityClassname(wep, cls, sizeof(cls));
+            // 只认弹药序号：同包里不会同时出现两颗同池雷（瓶顶替雷发，二选一），无需去重
+            int role = QG_GetGrenadeRole(wep);
+            if (role == GRENADE_ROLE_UNKNOWN)
+                continue;
+
             int ammoType = GetEntProp(wep, Prop_Send, "m_iPrimaryAmmoType");
             int ammo = (ammoType >= 0) ? GetEntProp(client, Prop_Send, "m_iAmmo", _, ammoType) : 1;
 
-            if (StrEqual(cls, "weapon_hegrenade", false))
+            if (role == GRENADE_ROLE_HE)
             {
                 heCount += ammo;
             }
-            else if (StrEqual(cls, "weapon_smokegrenade", false))
+            else if (role == GRENADE_ROLE_SMOKE)
             {
                 smokeCount += ammo;
             }
-            else if (StrEqual(cls, "weapon_flashbang", false))
+            else if (role == GRENADE_ROLE_FLASH)
             {
                 flashCount += ammo;
             }

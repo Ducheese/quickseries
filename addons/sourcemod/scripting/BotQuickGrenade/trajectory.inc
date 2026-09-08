@@ -13,16 +13,27 @@
  *
  * @param bot          Bot 实体索引
  * @param angles       指定的投掷欧拉角 (pitch, yaw, roll)
- * @param detonatePos  输出引信耗尽或滚停时的最终爆炸坐标
+ * @param detonatePos  输出引信耗尽、触碰或滚停时的最终爆炸坐标
+ * @param profile      武器画像（初速/重力/引信/引爆模式）
  * @param visualize    是否向所有玩家客户端渲染弹道 Beam（含反弹轨迹）
  * @param color        弹道渲染颜色（RGBA，默认 COLOR_HE）
  * @param beamLife     激光线段残留时间（秒，默认 BEAM_LIFE）
  */
-stock void SimulateGrenadeTrajectoryWithAngles(int bot, const float angles[3], float detonatePos[3], bool visualize, const int color[4] = COLOR_HE, float beamLife = BEAM_LIFE)
+stock void SimulateGrenadeTrajectoryWithAngles(int bot, const float angles[3], float detonatePos[3], const GrenadeProfile profile, bool visualize = false, const int color[4] = COLOR_HE, float beamLife = BEAM_LIFE)
 {
     float pitch = angles[0];
-    float throwSpeed = (90.0 - pitch) * 6.0;
-    if (throwSpeed > 750.0) throwSpeed = 750.0;
+    float throwSpeed;
+
+    // 初速模式分流：恒定初速（RPG 类直飞）vs 引擎仰角公式（原版抛物线）
+    if (profile.speedMode == SPEED_FIXED)
+    {
+        throwSpeed = profile.speed;
+    }
+    else
+    {
+        throwSpeed = (90.0 - pitch) * 6.0;
+        if (throwSpeed > profile.speed) throwSpeed = profile.speed;
+    }
 
     // 俯仰角修正公式（与 CS:S 引擎及 grenade_trajectory 一致）
     float correctedAngles[3];
@@ -48,14 +59,15 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, const float angles[3], f
     vel[1] = fwd[1] * throwSpeed + playerVel[1];
     vel[2] = fwd[2] * throwSpeed + playerVel[2];
 
-    float gravity = (cvarGravity != null) ? float(cvarGravity.IntValue) : 800.0;
-    float gForce = 0.4 * gravity; // CS:S 手雷重力系数为 0.4 * sv_gravity
+    float gravity = (cvarGravity != null) ? cvarGravity.FloatValue : 800.0;
+    float gForce = profile.gravityScale * gravity; // 重力倍率取画像（原版 0.4，直飞类 0.0）
     float dt = SIM_TIMESTEP;
+    float maxFlightTime = (profile.detonateTime > 0.0) ? profile.detonateTime : 1.5;
 
     int bounceCount = 0;
     const int MAX_BOUNCES = 5;
 
-    for (float t = 0.0; t <= GRENADE_FLIGHT_TIME; t += dt)
+    for (float t = 0.0; t <= maxFlightTime; t += dt)
     {
         float nextPos[3];
         nextPos[0] = pos[0] + vel[0] * dt;
@@ -78,6 +90,13 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, const float angles[3], f
             if (visualize)
             {
                 DrawBeamSegment(pos, nextPos, color, beamLife);
+            }
+
+            // 触碰即炸（燃烧瓶/RPG 类）：首碰即最终爆炸点，不反弹
+            if (profile.detonateMode == DETONATE_TOUCH)
+            {
+                detonatePos = nextPos;
+                return;
             }
 
             // 1. 计算法线反弹向量 (Impulse = 2.0 * dot(N, V))
@@ -127,7 +146,7 @@ stock void SimulateGrenadeTrajectoryWithAngles(int bot, const float angles[3], f
         pos = nextPos;
     }
 
-    // 引信时间到期（t >= GRENADE_FLIGHT_TIME），在空中或地面引爆
+    // 引信时间到期，在空中或地面引爆
     detonatePos = pos;
 }
 
@@ -164,11 +183,39 @@ stock bool CanExplosionReachTarget(const float detonatePos[3], const float targe
  * @param yaw          水平瞄准偏航角
  * @param bestPitch    输出求解出的最优仰角
  * @param detonatePos  输出最优最终爆炸点坐标
- * @param maxHitRadius 允许的最大命中半径（默认 HE_HIT_RADIUS）
- * @return             若存在爆炸点在 maxHitRadius 范围内且爆炸视线通畅返回 true，否则 false
+ * @param profile      武器画像（容差取 hitRadius）
+ * @return             若存在爆炸点在容差范围内且爆炸视线通畅返回 true，否则 false
  */
-stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, float &bestPitch, float detonatePos[3], float maxHitRadius = HE_HIT_RADIUS)
+stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, float &bestPitch, float detonatePos[3], const GrenadeProfile profile)
 {
+    float maxHitRadius = profile.hitRadius;
+
+    // 无重力直瞄类（RPG）：直线解析秒算，不跑抛物线搜索
+    if (profile.gravityScale <= 0.05)
+    {
+        float eye[3], dir[3], directAngles[3];
+        GetClientEyePosition(bot, eye);
+        SubtractVectors(targetPos, eye, dir);
+        GetVectorAngles(dir, directAngles);
+
+        float testAngles[3];
+        testAngles[0] = directAngles[0];
+        testAngles[1] = yaw;
+        testAngles[2] = 0.0;
+
+        float tDetonate[3];
+        SimulateGrenadeTrajectoryWithAngles(bot, testAngles, tDetonate, profile, false);
+
+        float d = GetVectorDistance(tDetonate, targetPos);
+        if (d <= maxHitRadius && CanExplosionReachTarget(tDetonate, targetPos))
+        {
+            bestPitch = directAngles[0];
+            detonatePos = tDetonate;
+            return true;
+        }
+        return false;
+    }
+
     float bestDist = MAX_SEARCH_DIST;
     bestPitch = 0.0;
 
@@ -184,7 +231,7 @@ stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, 
         angles[2] = 0.0;
 
         float tDetonate[3];
-        SimulateGrenadeTrajectoryWithAngles(bot, angles, tDetonate, false);
+        SimulateGrenadeTrajectoryWithAngles(bot, angles, tDetonate, profile, false);
 
         float d = GetVectorDistance(tDetonate, targetPos);
         // 粗搜最优基准点必须满足：视线通达可穿透，防止细搜中心锚定在被死墙阻隔的无效死角
@@ -217,7 +264,7 @@ stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, 
         angles[2] = 0.0;
 
         float tDetonate[3];
-        SimulateGrenadeTrajectoryWithAngles(bot, angles, tDetonate, false);
+        SimulateGrenadeTrajectoryWithAngles(bot, angles, tDetonate, profile, false);
 
         float d = GetVectorDistance(tDetonate, targetPos);
         // 细搜阶段必须同时满足：距离更优 + 冲击波视线畅通直达目标
@@ -230,31 +277,4 @@ stock bool FindBestPitchForTarget(int bot, const float targetPos[3], float yaw, 
     }
 
     return (bestDist <= maxHitRadius);
-}
-
-/**
- * 检查玩家背包中是否拥有指定类名的手雷且拥有可用弹药
- */
-stock bool BotHasGrenade(int client, const char[] classname)
-{
-    for (int i = 0; i < 48; i++)
-    {
-        int wep = GetEntPropEnt(client, Prop_Send, "m_hMyWeapons", i);
-        if (wep > 0 && IsValidEntity(wep))
-        {
-            char cls[32];
-            GetEntityClassname(wep, cls, sizeof(cls));
-            if (StrEqual(cls, classname, false))
-            {
-                int ammoType = GetEntProp(wep, Prop_Send, "m_iPrimaryAmmoType");
-                if (ammoType >= 0)
-                {
-                    int ammo = GetEntProp(client, Prop_Send, "m_iAmmo", _, ammoType);
-                    return (ammo > 0);
-                }
-                return true;
-            }
-        }
-    }
-    return false;
 }

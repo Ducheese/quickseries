@@ -32,7 +32,7 @@ enum struct GrenadeProfile
     float               detonateTime;    // 引信时长 (秒)
     float               gravityScale;    // 重力倍率 (相对于 sv_gravity，默认 0.4，直飞为 0.0)
     GrenadeSpeedMode    speedMode;       // 速度模式
-    float               speed;           // 速度值
+    float               speed;           // 初速度值 / 初速度上限
     float               hitRadius;       // 强效果界限
     float               minThrowDist;    // 防自伤距离（太近不扔）
     float               maxThrowDist;    // 理论射程上限
@@ -156,7 +156,7 @@ stock void QG_WriteDefaultConfigFile(const char[] path)
     WriteFileLine(file, "    {");
     WriteFileLine(file, "        \"role\"              \"he\"");
     WriteFileLine(file, "        \"detonate\"          \"touch\"       // 触地即炸");
-    WriteFileLine(file, "        \"detonate_time\"     \"5.0\"         // 触碰无引信，此值仅作仿真上界（44°满抛飞约3.4s，dev 修后可删）");
+    WriteFileLine(file, "        \"detonate_time\"     \"5.0\"         // 触碰无引信，此值是仿真飞行上界（必填，不填按 1.5 截断射程）");
     WriteFileLine(file, "        \"radius\"            \"92.0\"        // 火场覆盖（四角 42.4＋单团 50）");
     WriteFileLine(file, "        \"safe_dist\"         \"92.0\"        // 与效果圈同值：火不分敌我，进圈就烧");
     WriteFileLine(file, "        \"range\"             \"1843.0\"      // 无引信，第一落点即炸（仰角≈44°，平地）");
@@ -164,12 +164,12 @@ stock void QG_WriteDefaultConfigFile(const char[] path)
     WriteFileLine(file, "    }");
     WriteFileLine(file, "");
     WriteFileLine(file, "    // 范例 2：火箭筒 (homingmissiles.sp，按 missile_* 默认值推导：damage 300→被引擎截到 250，");
-    WriteFileLine(file, "    //         radius 800，speed 1400；改 convar 必重算。type 0 无制导直线精确，追踪/准星制导下直线仿真为保守下界)");
+    WriteFileLine(file, "    //         radius 800，speed 1400；改 convar 必重算。type 0 无制导直线可用，type 1/2 追踪制导 Bot 直接跳过)");
     WriteFileLine(file, "    \"weapon_rpg\"");
     WriteFileLine(file, "    {");
     WriteFileLine(file, "        \"role\"              \"he\"");
     WriteFileLine(file, "        \"detonate\"          \"touch\"       // OnStartTouch 即炸");
-    WriteFileLine(file, "        \"detonate_time\"     \"3.0\"         // 触碰无引信，此值仅作仿真上界（3s×1400=4200，dev 修后可删）");
+    WriteFileLine(file, "        \"detonate_time\"     \"3.0\"         // 触碰无引信，此值是仿真飞行上界（必填，不填按 1.5 截断射程）");
     WriteFileLine(file, "        \"gravity\"           \"0.0\"         // MOVETYPE_FLY 无重力");
     WriteFileLine(file, "        \"speed_mode\"        \"fixed\"       // 每 think 重置初速，恒定（跟随 missile_speed）");
     WriteFileLine(file, "        \"speed\"             \"1400.0\"      // 跟随 missile_speed（默认 1400，可配 300~3000）");
@@ -223,6 +223,7 @@ stock void QG_LoadWeaponProfilesConfig()
     KeyValues kv = new KeyValues("QuickGrenadeWeapons");
     if (!kv.ImportFromFile(cfgPath))
     {
+        LogError("[QuickGrenade] 画像配置读取失败（%s），沿用空表＋弹药序号回退", cfgPath);
         delete kv;
         return;
     }
@@ -247,11 +248,14 @@ stock void QG_LoadWeaponProfilesConfig()
 
             char roleStr[16];
             kv.GetString("role", roleStr, sizeof(roleStr), "he");
+            TrimString(roleStr);
             int role = GRENADE_ROLE_HE;
             if (StrEqual(roleStr, "flash", false))
                 role = GRENADE_ROLE_FLASH;
             else if (StrEqual(roleStr, "smoke", false))
                 role = GRENADE_ROLE_SMOKE;
+            else if (!StrEqual(roleStr, "he", false))
+                LogError("[QuickGrenade] 画像条目 [%s] role 非法（\"%s\"），按 he 处理", classname, roleStr);
 
             // 先赋上该角色的标准原版默认值（未配置字段 100% 自动优雅兜底）
             GrenadeProfile profile;
@@ -260,6 +264,7 @@ stock void QG_LoadWeaponProfilesConfig()
             // 引爆方式
             char detonateStr[16];
             kv.GetString("detonate", detonateStr, sizeof(detonateStr), "");
+            TrimString(detonateStr);
             if (StrEqual(detonateStr, "touch", false))
             {
                 profile.detonateMode = DETONATE_TOUCH;
@@ -286,6 +291,7 @@ stock void QG_LoadWeaponProfilesConfig()
             // 速度模式与初速度
             char speedModeStr[16];
             kv.GetString("speed_mode", speedModeStr, sizeof(speedModeStr), "");
+            TrimString(speedModeStr);
             if (StrEqual(speedModeStr, "fixed", false))
             {
                 profile.speedMode = SPEED_FIXED;
@@ -299,6 +305,7 @@ stock void QG_LoadWeaponProfilesConfig()
             if (spd > 0.0)
             {
                 profile.speed = spd;
+                // 没写 speed_mode 时的自动推断，有 speed 数＋零重力 → 意图明确（恒定这个数直飞）
                 if (profile.gravityScale <= 0.05 && speedModeStr[0] == '\0')
                 {
                     profile.speedMode = SPEED_FIXED;
@@ -313,8 +320,7 @@ stock void QG_LoadWeaponProfilesConfig()
             }
 
             float minDist = kv.GetFloat("safe_dist", 0.0);
-            bool hasMinDist = (minDist > 0.0);
-            if (hasMinDist)
+            if (minDist > 0.0)
             {
                 profile.minThrowDist = minDist;
             }
@@ -356,6 +362,37 @@ stock int QG_GetConfiguredRole(const char[] classname)
 }
 
 /**
+ * 取武器实体的完整画像（Bot 求解链唯一入口；用法见 cfg 注释）
+ *
+ * cfg 有条目拿整份；无条目按弹药序号套原版默认；非雷（无序号）返回 false。
+ * 调用方传未初始化 GrenadeProfile 即可，成功时保证全字段填充，false 时不动。
+ *
+ * @param weaponEnt   武器实体索引
+ * @param profile     输出画像结构体
+ * @return            true=是雷且画像有效，false=非雷（勿用）
+ */
+stock bool QG_GetEntityProfile(int weaponEnt, GrenadeProfile profile)
+{
+    if (weaponEnt <= 0 || !IsValidEntity(weaponEnt))
+        return false;
+
+    char classname[64];
+    GetEntityClassname(weaponEnt, classname, sizeof(classname));
+
+    // cfg 的 role 优先
+    if (g_hWeaponProfiles != null
+        && g_hWeaponProfiles.GetArray(classname, profile, sizeof(profile)))
+        return (profile.role != GRENADE_ROLE_UNKNOWN);
+
+    int role = QG_GetGrenadeRole(weaponEnt);
+    if (role == GRENADE_ROLE_UNKNOWN)
+        return false;
+
+    profile.InitDefault(role);
+    return true;
+}
+
+/**
  * 查询类名的雷 v 模槽位（mode 2 分流判据；用法见 cfg 注释）
  *
  * @param classname   武器类名（如 weapon_molotov）
@@ -378,8 +415,9 @@ stock int QG_GetGrenadeViewSlot(const char[] classname)
  * 寻找玩家背包中指定战术角色的首个有弹手雷实体（cfg 优先，弹药序号回退）
  *
  * 与 quickgrenade.inc 的 QG_FindGrenadeByRole 的唯一区别：先查 cfg 的 classname→role
- * 映射，再回退到底层弹药序号。复用原版弹药序号的加枪雷两者等价；使用全新弹药序号的
- * 自定义雷只有这个函数能发现。需要 include <quickgrenade_profile> 且加载过配置。
+ * 映射（可改战术定位，如闪光弹当高爆用），再回退到底层弹药序号。
+ * 所有定制雷都复用原版弹药序号（不存在全新序号），发现能力两者等价，区别只在 role 改写。
+ * 需要 include <quickgrenade_profile> 且加载过配置。
  * 备弹无条件必查（是雷就有弹药序号，见 quickgrenade.inc 同名函数注释）。
  *
  * @param client    玩家 Client Index
@@ -399,6 +437,7 @@ stock int QG_FindGrenadeByRoleEx(int client, int role)
             char cls[64];
             GetEntityClassname(weapon, cls, sizeof(cls));
 
+            // cfg 的 role 优先
             int wrole = QG_GetConfiguredRole(cls);
             if (wrole == GRENADE_ROLE_UNKNOWN)
                 wrole = QG_GetGrenadeRole(weapon);

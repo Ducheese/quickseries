@@ -24,6 +24,9 @@
 #include <quickgrenade>
 #define REQUIRE_PLUGIN
 
+// 武器画像（弹道求解与角色发现唯一依据；本体换图加载，本插件自带一份）
+#include <quickgrenade_profile>
+
 #include "BotQuickGrenade/global"
 #include "BotQuickGrenade/visuals"
 #include "BotQuickGrenade/trajectory"
@@ -51,6 +54,7 @@ public Plugin myinfo =
 
 public void OnPluginStart()
 {
+    QG_LoadWeaponProfilesConfig();
     RegisterBotQuickGrenadeCommands();
     RegisterBotQuickGrenadeHooks();
 }
@@ -58,10 +62,12 @@ public void OnPluginStart()
 public void OnPluginEnd()
 {
     UnregisterBotQuickGrenadeHooks();
+    delete g_hWeaponProfiles;
 }
 
 public void OnMapStart()
 {
+    QG_LoadWeaponProfilesConfig();
     g_iBeamSprite = PrecacheModel("sprites/laserbeam.spr");
 
     for (int i = 1; i <= MaxClients; i++)

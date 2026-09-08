@@ -11,14 +11,9 @@
 #define PLUGIN_VERSION              "1.0"
 
 // --- 投雷公共判定与物理模拟参数 ---
-#define DIST_MIN                    350.0   // Bot 与目标最近有效投雷距离（HE 默认的伤害范围，350.0 以外才算完全无伤害）
-#define DIST_MAX                    1050.0  // Bot 与目标最远有效投雷距离（默认 1.5 秒引信时间，抛物线最远就是20米左右）
 #define MAX_SEARCH_DIST             999999.0 // 搜索初值极大值（距离无穷大哨兵值）
-#define GRENADE_FLIGHT_TIME         1.5     // 弹道模拟最长飞行时间上限（取引信时间）
-
 #define SIM_TIMESTEP                0.05    // 弹道模拟积分步长（关系到弹道的平滑精度）
-#define ANGLE_OVERRIDE_DUR          1.5     // 投雷动作期间强制覆盖视角锁定的持续时间（秒）
-#define TEAMMATE_SAFETY_RADIUS      350.0   // 队友防误伤安全半径（若爆炸点该范围内有存活队友则终止投雷）
+#define ANGLE_OVERRIDE_DUR          1.5     // 投雷动作期间强制覆盖视角锁定的持续时间（秒，锁自家动作时间线，与引信无关）
 
 // --- 仰角搜索范围与步频 ---
 #define PITCH_MIN                  -45.0    // 最大高抛仰角（向天空高抛，负数为仰角，收敛至 -45° 防止触碰天顶）
@@ -30,8 +25,8 @@
 #define BOT_THINK_INTERVAL          0.2     // Bot AI 主思考循环间隔（0.2s 搭配 5 帧错峰轮询，单 Bot 等效 1.0s）
 #define MEMORY_DURATION             5.0     // 敌人最后暴露坐标（Last Known Position）记忆有效期（秒）
 #define BOT_FOV_HALF                60.0    // Bot 视野半角（度，总视锥 120°）
-#define VISION_MAX_RANGE            1600.0  // 视觉直接感知最大有效视距（可以比 DIST_MAX 大）
-#define GUNFIRE_HEARING_RANGE       1350.0  // 未消音武器开火的听觉感知范围（可以比 DIST_MAX 大）
+#define VISION_MAX_RANGE            1600.0  // 视觉直接感知最大有效视距（可以比画像 range 大）
+#define GUNFIRE_HEARING_RANGE       1350.0  // 未消音武器开火的听觉感知范围（可以比画像 range 大）
 #define GUNFIRE_SILENCED_RANGE      600.0   // 消音武器开火的听觉感知范围
 #define FOOTSTEP_HEARING_RANGE      450.0   // 敌人跑步脚步声的听觉感知范围（8到10米内的脚步声）
 #define SOUND_DISPERSION_GUNFIRE    60.0    // 听觉枪声位置的随机模糊散布半径（模仿听声辨位不确定度）
@@ -39,12 +34,10 @@
 
 // --- 高爆手雷 (HE Grenade) 专属参数 ---
 #define HE_COOLDOWN                 12.0    // HE 投掷冷却时间（秒）
-#define HE_HIT_RADIUS               160.0   // HE 落点有效杀伤判定半径
 stock const int COLOR_HE[4]       = {255,  50,  50, 220};  // 红色：HE 弹道与落点
 
 // --- 战术烟雾弹 (Smoke Grenade) 与 C4 战术专属参数 ---
 #define SMOKE_COOLDOWN              15.0    // Smoke 投掷冷却时间（秒）
-#define SMOKE_HIT_RADIUS            220.0   // Smoke 有效落点判定半径
 #define SMOKE_HEALTH_THRESHOLD      35      // 残血自保脚底烟触发血量阈值 (HP <= 35)
 #define SMOKE_INTERPOLATION_RATIO   0.45    // 弹夹打空/换弹时视线中点烟的插值比例（45% 偏向己方一侧）
 #define SMOKE_SELF_OFFSET           80.0    // 残血/致盲脚底自保烟沿视线前推距离
@@ -60,10 +53,9 @@ stock const int COLOR_SMOKE[4]    = { 50, 220,  50, 220};  // 绿色：Smoke 弹
 
 // --- 战术闪光弹 (Flashbang) 专属参数 ---
 #define FLASH_COOLDOWN              10.0    // Flash 投掷冷却时间（秒）
-#define FLASH_HIT_RADIUS            500.0   // Flash 弹道落点有效强致盲判定半径（HU，CS:S 源码 500 HU 处致盲强度仍达 ~83%）
 #define FLASH_BLIND_DOT_MIN         0.6     // 敌人有效强致盲最小朝向 Dot 阈值（对应 CS:S 源码强致盲第一档：dot >= 0.6，约 53° 正对锥）
 #define FLASH_SELF_BACK_DOT_MAX    -0.2     // 自身背身防自闪 Dot 上限（对应 CS:S 源码背身最弱档阈值：dot < -0.2）
-#define FLASH_SELF_SAFE_DIST_BACK   1000.0  // 无掩体背身防自闪安全距离（HU，源码背身档 fadeHold < 0.5s 对应 dist > 1000 HU，恰在 DIST_MAX 边缘）
+#define FLASH_SELF_SAFE_DIST_BACK   1000.0  // 无掩体背身防自闪安全距离（HU，源码背身档 fadeHold < 0.5s 对应 dist > 1000 HU，约等于原版画像 range（953））
 #define FLASH_SELF_SAFE_DIST_FRONT  2800.0  // 无掩体非背身防自闪安全距离（HU，源码直视强致盲档 fadeTime < 0.5s 需 dist > 2800 HU，超出投雷上限，等效绝不丢）
 #define FLASH_TEAM_MATE_DOT_MIN     0.0     // 队友受闪危险视线 Dot 阈值（dot > 0.0 即面朝闪光半球视作有误伤致盲风险）
 stock const int COLOR_FLASH[4]    = {  0, 200, 255, 220};  // 亮蓝色：Flash 弹道与落点

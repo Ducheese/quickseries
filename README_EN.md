@@ -101,6 +101,18 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickgrenade_forbidden` | `"weapon_minigun"` | Blacklist of weapons that block quick grenade |
 | `sm_quickgrenade_priority` | `"FSH"` | Tactical grenade priority code (F=flash S=smoke H=HE, drained in order) |
 
+### `configs/quickgrenade_weapons.cfg` (weapon profiles, reload on map change)
+
+| Key | Default | Description |
+| :--- | :---: | :--- |
+| `Settings.viewmodel_fix_mode` | `0` | Viewmodel fix: 0=leave alone (stock/HAN); 1=hide 1 show 0 (old guns/sights); 2=split by grenade slot (new guns/sights) |
+| Entry `role` | `he` | Tactical role: set `he` for flash-ammo used as HE (only use case) |
+| Entry `detonate` | `fuse` | `touch`=detonate on touch (molotov/RPG types) |
+| Entry `safe_dist` / `range` | defaults | Safety distance (skip below) / range (Bot gives up beyond); 0 means unset |
+| Entry `viewmodel` | `0` | Grenade viewmodel slot, mode 2 only; New-Weapons customs set `1` |
+
+BotQuickGrenade fully consumes profiles (HE/smoke/flash solving, prescreens, HUD counts); stock-server defaults as above.
+
 ---
 
 ## Developer API

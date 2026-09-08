@@ -56,7 +56,7 @@ stock bool IsTeammateNearPosition(int bot, const float pos[3], float radius)
 
     for (int mate = 1; mate <= MaxClients; mate++)
     {
-        if (mate == bot) continue; // 自身距离由 DIST_MIN 保证
+        if (mate == bot) continue; // 自身距离由画像 safe_dist 保证
         if (!IsClientInGame(mate) || !IsPlayerAlive(mate)) continue;
         if (GetClientTeam(mate) != botTeam) continue;
 
@@ -117,7 +117,7 @@ stock bool HasLivingEnemies(int botTeam)
  * @param landPos      输出最佳落点坐标
  * @return             有效目标实体索引，若无可行目标返回 -1
  */
-stock int FindTargetAndComputeAngles(int bot, float throwAngles[3], float landPos[3])
+stock int FindTargetAndComputeAngles(int bot, float throwAngles[3], float landPos[3], const GrenadeProfile profile)
 {
     if (!IsClientInGame(bot) || !IsPlayerAlive(bot) || IsBotBusyWithC4(bot))
         return -1;
@@ -141,26 +141,26 @@ stock int FindTargetAndComputeAngles(int bot, float throwAngles[3], float landPo
         if (GetConVarBool(cvarRequireCover) && CanShootTargetDirectly(bot, t))
             continue;
 
-        // 3. 距离区间粗筛（太近防自炸，太远抛不到）
+        // 3. 距离区间粗筛（画像 safe_dist / range；太近防自炸，太远抛不到）
         float targetPos[3];
         targetPos = g_vecLastKnownPos[bot][t];
 
         float dist = GetVectorDistance(botEye, targetPos);
-        if (dist < DIST_MIN || dist > DIST_MAX) continue;
+        if (dist < profile.minThrowDist || dist > profile.maxThrowDist) continue;
 
         // 4. 水平偏航角计算
         float dx = targetPos[0] - botEye[0];
         float dy = targetPos[1] - botEye[1];
         float yaw = RadToDeg(ArcTangent2(dy, dx));
 
-        // 5. 仰角数值搜索（求解抛物线）
+        // 5. 仰角数值搜索（求解抛物线或直瞄平射）
         float bestPitch;
-        bool hit = FindBestPitchForTarget(bot, targetPos, yaw, bestPitch, landPos);
+        bool hit = FindBestPitchForTarget(bot, targetPos, yaw, bestPitch, landPos, profile);
 
         if (hit)
         {
             // 6. 队友防误伤安全检查
-            if (GetConVarBool(cvarFriendlyFire) && IsTeammateNearPosition(bot, landPos, TEAMMATE_SAFETY_RADIUS))
+            if (GetConVarBool(cvarFriendlyFire) && IsTeammateNearPosition(bot, landPos, profile.minThrowDist))
                 continue;
 
             throwAngles[0] = bestPitch;
@@ -188,7 +188,7 @@ stock int FindTargetAndComputeAngles(int bot, float throwAngles[3], float landPo
  * @param isC4Event    输出是否命中了 C4 战术事件（用于阵营团队协同冷却更新）
  * @return             若找到有效烟雾战术目标且解算成功返回 true，否则 false
  */
-stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[3], char[] outReason, int maxReasonLen, bool &isC4Event)
+stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[3], char[] outReason, int maxReasonLen, bool &isC4Event, const GrenadeProfile profile)
 {
     isC4Event = false;
 
@@ -242,7 +242,7 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
                 }
 
                 // 自己没在拆包的前提下：自己准备去拆（进包点/靠近C4），或者有队友正在拆包且在投掷范围内
-                if (!isDefusing && (inBombZone || distToC4 <= C4_DEFUSE_APPROACH_DIST || (teammateDefusing && distToC4 <= DIST_MAX)))
+                if (!isDefusing && (inBombZone || distToC4 <= C4_DEFUSE_APPROACH_DIST || (teammateDefusing && distToC4 <= profile.maxThrowDist)))
                 {
                     smokeTarget = g_vecPlantedC4Pos;
                     hasTarget = true;
@@ -269,7 +269,7 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
                         enemyPos = g_vecLastKnownPos[bot][t];
                         float d = GetVectorDistance(botPos, enemyPos);
 
-                        if (d >= DIST_MIN && d <= DIST_MAX)
+                        if (d >= profile.minThrowDist && d <= profile.maxThrowDist)
                         {
                             smokeTarget = enemyPos;
                             hasTarget = true;
@@ -330,7 +330,7 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
                                     GetClientAbsOrigin(t, tPos);
                                     float distToPlanter = GetVectorDistance(botPos, tPos);
 
-                                    if (distToPlanter >= C4_PLANTER_COVER_MIN_DIST && distToPlanter <= DIST_MAX)
+                                    if (distToPlanter >= C4_PLANTER_COVER_MIN_DIST && distToPlanter <= profile.maxThrowDist)
                                     {
                                         smokeTarget = tPos;
                                         hasTarget = true;
@@ -455,7 +455,7 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
                     if (g_fLastPerceivedTime[bot][t] > 0.0 && (now - g_fLastPerceivedTime[bot][t] <= MEMORY_DURATION))
                     {
                         float d = GetVectorDistance(botPos, g_vecLastKnownPos[bot][t]);
-                        if (d < nearestDist && d <= DIST_MAX)
+                        if (d < nearestDist && d <= profile.maxThrowDist)
                         {
                             nearestDist = d;
                             nearestEnemy = t;
@@ -488,7 +488,7 @@ stock bool FindSmokeTacticalTarget(int bot, float throwAngles[3], float landPos[
     float yaw = RadToDeg(ArcTangent2(dy, dx));
 
     float bestPitch;
-    bool hit = FindBestPitchForTarget(bot, smokeTarget, yaw, bestPitch, landPos, SMOKE_HIT_RADIUS);
+    bool hit = FindBestPitchForTarget(bot, smokeTarget, yaw, bestPitch, landPos, profile);
 
     if (hit)
     {
@@ -539,7 +539,7 @@ stock bool CanFlashBlindEnemy(const float flashPos[3], int enemy)
  *   - 非背身（dot >= FLASH_SELF_BACK_DOT_MAX，涵盖侧后/侧前/直视）：
  *     需距离 > FLASH_SELF_SAFE_DIST_FRONT（2800 HU），超出投雷上限，等效绝不丢
  *   - 背身  （dot <  FLASH_SELF_BACK_DOT_MAX，源码最弱档 fadeHold = dmg * 0.25）：
- *     需距离 > FLASH_SELF_SAFE_DIST_BACK（1000 HU），恰在 DIST_MAX 边缘
+ *     需距离 > FLASH_SELF_SAFE_DIST_BACK（1000 HU），约等于原版画像 range（953）
  */
 stock bool IsFlashSafeFromSelf(int bot, const float flashPos[3])
 {
@@ -573,9 +573,9 @@ stock bool IsFlashSafeFromSelf(int bot, const float flashPos[3])
 
 /**
  * 门禁 3：严苛防队友检测
- * 检查爆炸点是否会在强致盲半径 (FLASH_HIT_RADIUS) 内直连并闪瞎任何正视该方向 (dot > FLASH_TEAM_MATE_DOT_MIN) 的存活队友
+ * 检查爆炸点是否会在画像有效半径内直连并闪瞎任何正视该方向 (dot > FLASH_TEAM_MATE_DOT_MIN) 的存活队友
  */
-stock bool IsTeammateFlashed(int bot, const float flashPos[3])
+stock bool IsTeammateFlashed(int bot, const float flashPos[3], const GrenadeProfile profile)
 {
     int botTeam = GetClientTeam(bot);
 
@@ -588,7 +588,7 @@ stock bool IsTeammateFlashed(int bot, const float flashPos[3])
         GetClientEyePosition(mate, mateEye);
 
         float dist = GetVectorDistance(mateEye, flashPos);
-        if (dist <= FLASH_HIT_RADIUS)
+        if (dist <= profile.hitRadius)
         {
             TR_TraceRayFilter(flashPos, mateEye, MASK_VISIBLE, RayType_EndPoint, TraceFilter_WorldOnly);
             if (TR_GetFraction() == 1.0)
@@ -624,7 +624,7 @@ stock bool IsTeammateFlashed(int bot, const float flashPos[3])
  * @param maxReasonLen 描述字符串缓冲区大小
  * @return             有效目标实体索引，若无可行目标返回 -1
  */
-stock int FindFlashTacticalTarget(int bot, float throwAngles[3], float landPos[3], char[] outReason, int maxReasonLen)
+stock int FindFlashTacticalTarget(int bot, float throwAngles[3], float landPos[3], char[] outReason, int maxReasonLen, const GrenadeProfile profile)
 {
     if (!IsClientInGame(bot) || !IsPlayerAlive(bot) || IsBotBusyWithC4(bot))
         return -1;
@@ -653,12 +653,12 @@ stock int FindFlashTacticalTarget(int bot, float throwAngles[3], float landPos[3
         if (GetConVarBool(cvarRequireCover) && CanShootTargetDirectly(bot, t))
             continue;
 
-        // 3. 距离区间粗筛（太近防自闪自伤，太远抛不到）
+        // 3. 距离区间粗筛（画像 safe_dist / range；闪缺省无下限，只卡射程）
         float targetPos[3];
         targetPos = g_vecLastKnownPos[bot][t];
 
         float dist = GetVectorDistance(botEye, targetPos);
-        if (dist < DIST_MIN || dist > DIST_MAX)
+        if (dist < profile.minThrowDist || dist > profile.maxThrowDist)
             continue;
 
         // 4. 水平偏航角计算
@@ -666,16 +666,16 @@ stock int FindFlashTacticalTarget(int bot, float throwAngles[3], float landPos[3
         float dy = targetPos[1] - botEye[1];
         float yaw = RadToDeg(ArcTangent2(dy, dx));
 
-        // 5. 仰角数值搜索（求解抛物线，使用 FLASH_HIT_RADIUS 判定落点）
+        // 5. 仰角数值搜索（求解抛物线，使用画像有效半径判定落点）
         float bestPitch;
-        bool hit = FindBestPitchForTarget(bot, targetPos, yaw, bestPitch, landPos, FLASH_HIT_RADIUS);
+        bool hit = FindBestPitchForTarget(bot, targetPos, yaw, bestPitch, landPos, profile);
         if (hit)
         {
             // 6. 三大安全门禁检验：
             //   - 敌人有效致盲质量门禁（视线直通且正对 dot >= FLASH_BLIND_DOT_MIN）
             //   - 自身防自闪门禁（有掩体 或 距离远且背身）
             //   - 友军防闪门禁（受 cvarFriendlyFire 开关控制）
-            bool mateSafe = (!GetConVarBool(cvarFriendlyFire) || !IsTeammateFlashed(bot, landPos));
+            bool mateSafe = (!GetConVarBool(cvarFriendlyFire) || !IsTeammateFlashed(bot, landPos, profile));
 
             if (CanFlashBlindEnemy(landPos, t) && IsFlashSafeFromSelf(bot, landPos) && mateSafe)
             {
