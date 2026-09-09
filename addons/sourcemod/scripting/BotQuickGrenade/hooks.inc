@@ -33,9 +33,6 @@ stock void RegisterBotQuickGrenadeHooks()
             SDKHook(i, SDKHook_WeaponSwitch, Hook_BotWeaponSwitch);
         }
     }
-
-    CreateTimer(BOT_THINK_INTERVAL, Timer_BotThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-    CreateTimer(0.5, Timer_UpdateSpectatorHUD, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
 stock void UnregisterBotQuickGrenadeHooks()
@@ -113,6 +110,7 @@ public void Event_RoundStart(Handle event, const char[] name, bool dontBroadcast
 {
     ResetC4State();
     ClearAllMemory();
+    ResetAllGrenadeTimers();
 }
 
 public void Event_BombPlanted(Handle event, const char[] name, bool dontBroadcast)
@@ -173,7 +171,7 @@ public void Event_PlayerSpawn(Handle event, const char[] name, bool dontBroadcas
 
     if (client < 1 || client > MaxClients || !IsClientInGame(client)) return;
 
-    g_fFlashEndTime[client] = 0.0;
+    ResetClientGrenadeTimers(client);
 
     if (IsFakeClient(client) && GetConVarBool(cvarGiveGrenades))
     {
@@ -223,6 +221,31 @@ public void Event_WeaponFire(Handle event, const char[] name, bool dontBroadcast
 
     int shooter = GetClientOfUserId(GetEventInt(event, "userid"));
     ProcessGunfire(shooter);
+}
+
+/**
+ * 重置单个玩家/Bot 的手雷投掷冷却时间戳（收敛至 -9999.0 哨兵初值，保证开局与重生立即可用）
+ */
+stock void ResetClientGrenadeTimers(int client)
+{
+    if (client >= 1 && client <= MaxClients)
+    {
+        g_fLastHeThrowTime[client]    = -9999.0;
+        g_fLastSmokeThrowTime[client] = -9999.0;
+        g_fLastFlashThrowTime[client] = -9999.0;
+        g_fFlashEndTime[client]       = 0.0;
+    }
+}
+
+/**
+ * 重置全服所有客户端的手雷投掷冷却时间戳（开局 / 换图 / 回合重置）
+ */
+stock void ResetAllGrenadeTimers()
+{
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        ResetClientGrenadeTimers(i);
+    }
 }
 
 //========================================================================================

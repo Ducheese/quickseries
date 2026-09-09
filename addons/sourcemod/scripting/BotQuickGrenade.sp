@@ -55,6 +55,7 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
     QG_LoadWeaponProfilesConfig();
+    ResetAllGrenadeTimers();
     RegisterBotQuickGrenadeCommands();
     RegisterBotQuickGrenadeHooks();
 }
@@ -70,19 +71,20 @@ public void OnMapStart()
     QG_LoadWeaponProfilesConfig();
     g_iBeamSprite = PrecacheModel("sprites/laserbeam.spr");
 
+    ResetAllGrenadeTimers();
+
     for (int i = 1; i <= MaxClients; i++)
     {
-        g_fLastHeThrowTime[i]    = 0.0;    // HE
-        g_fLastSmokeThrowTime[i] = 0.0;    // Smoke
-        g_fLastFlashThrowTime[i] = 0.0;    // Flash
-        g_fFlashEndTime[i]       = 0.0;    // Flash End Time
-
         g_bAngleOverride[i]      = false;
         g_fOverrideExpiry[i]     = 0.0;
     }
 
     // 全局大清空
     ClearAllMemory();
+
+    // 启动 Bot AI 主思考循环与观战 HUD 定时器（换图自毁后在新图重新拉起）
+    CreateTimer(BOT_THINK_INTERVAL, Timer_BotThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    CreateTimer(0.5, Timer_UpdateSpectatorHUD, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public void OnClientPutInServer(int client)
@@ -95,10 +97,7 @@ public void OnClientPutInServer(int client)
 
 public void OnClientDisconnect(int client)
 {
-    g_fLastHeThrowTime[client]    = 0.0;
-    g_fLastSmokeThrowTime[client] = 0.0;
-    g_fLastFlashThrowTime[client] = 0.0;
-    g_fFlashEndTime[client]       = 0.0;
+    ResetClientGrenadeTimers(client);
 
     g_bAngleOverride[client]      = false;
     g_fOverrideExpiry[client]     = 0.0;
