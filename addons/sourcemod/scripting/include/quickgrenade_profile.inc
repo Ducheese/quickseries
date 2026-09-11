@@ -36,7 +36,6 @@ enum struct GrenadeProfile
     float               hitRadius;       // 强效果界限
     float               minThrowDist;    // 防自伤距离（太近不扔）
     float               maxThrowDist;    // 理论射程上限
-    int                 viewmodel;       // 雷 v 模在几号 predicted_viewmodel，缺省 0
 
     // 出处：重力 0.4=basecsgrenade_projectile.h:54（三雷统一，烟的 0.55 被覆盖）；
     // 初速 750+(90-p)*6=weapon_basecsgrenade.cpp:414-417（仰角修正 407/411 等价）。
@@ -48,7 +47,6 @@ enum struct GrenadeProfile
         this.speedMode = SPEED_ENGINE;
         this.speed = 750.0;
         this.maxThrowDist = 953.0;   // [推导] 静止平地引信内最远（750/1.5s/0.4g/眼64/仰角26°，积分+闭式双算）
-        this.viewmodel = 0;
 
         switch (targetRole)
         {
@@ -89,8 +87,8 @@ StringMap g_hWeaponProfiles = null;
 
 // 全局视图修复模式（cfg Settings 段 viewmodel_fix_mode）
 // 0=不干预（原版 / HAN 武器框架）；
-// 1=统一藏 1 号亮 0 号（老加枪+老机瞄）；
-// 2=按配置分流，viewmodel=1 的走藏 0 显 1，其余走藏 1 显 0（新加枪+新机瞄）
+// 1=统统藏 1 号亮 0 号（老加枪+老机瞄）；
+// 2=仅原版三雷藏 1 显 0，加枪等其他类名直接放行（新加枪+新机瞄）
 int g_iQGViewModelFixMode = 0;
 
 /**
@@ -120,8 +118,8 @@ stock void QG_WriteDefaultConfigFile(const char[] path)
     WriteFileLine(file, "// 全局 Settings 段（兼容加枪武器）：");
     WriteFileLine(file, "//   viewmodel_fix_mode : 视图修复模式");
     WriteFileLine(file, "//                        0=不干预（原版 / HAN 武器框架）；");
-    WriteFileLine(file, "//                        1=统一藏 1 号亮 0 号（老加枪+老机瞄）；");
-    WriteFileLine(file, "//                        2=按配置分流，viewmodel=1 的走藏 0 显 1，其余走藏 1 显 0（新加枪+新机瞄）");
+    WriteFileLine(file, "//                        1=统统藏 1 号亮 0 号（老加枪+老机瞄）；");
+    WriteFileLine(file, "//                        2=仅原版三雷藏 1 显 0，加枪等其他类名直接放行（新加枪+新机瞄）");
     WriteFileLine(file, "//");
     WriteFileLine(file, "// 大多数情况下无需配置，系统会自动根据底层弹药类型给出完善的默认值兜底。");
     WriteFileLine(file, "// 需要配置的两种情形：");
@@ -139,7 +137,6 @@ stock void QG_WriteDefaultConfigFile(const char[] path)
     WriteFileLine(file, "//   radius        : 效果外圈半径（小于理论伤害范围即可，可以适当缩小以预测伤害效果，见范例）");
     WriteFileLine(file, "//   safe_dist     : 安全距离，低于该距离不扔（防自伤；HE 默认 350，flash/smoke 默认 0.0，flash的“安全距离”由 BotQuickGrenade 全局变量决定，无法在此配置）");
     WriteFileLine(file, "//   range         : 理论射程，超过该距离 Bot 直接放弃求解（默认 953，长程武器如 RPG 可放宽）");
-    WriteFileLine(file, "//   viewmodel     : 雷 v 模在几号 predicted_viewmodel（仅在 viewmodel_fix_mode 取 2 时有效，缺省 0，需要“藏 0 显 1”的加枪武器填 1）");
     WriteFileLine(file, "//");
     WriteFileLine(file, "// 配置重载：修改后换图生效");
     WriteFileLine(file, "// ==========================================================================");
@@ -160,7 +157,6 @@ stock void QG_WriteDefaultConfigFile(const char[] path)
     WriteFileLine(file, "        \"radius\"            \"92.0\"        // 火场覆盖（四角 42.4＋单团 50）");
     WriteFileLine(file, "        \"safe_dist\"         \"92.0\"        // 与效果圈同值：火不分敌我，进圈就烧");
     WriteFileLine(file, "        \"range\"             \"1843.0\"      // 无引信，第一落点即炸（仰角≈44°，平地）");
-    WriteFileLine(file, "        \"viewmodel\"         \"1\"           // 新加枪+新机瞄，定制雷 v 模在 1 号槽");
     WriteFileLine(file, "    }");
     WriteFileLine(file, "");
     WriteFileLine(file, "    // 范例 2：火箭筒 (homingmissiles.sp，按 missile_* 默认值推导：damage 300→被引擎截到 250，");
@@ -176,7 +172,6 @@ stock void QG_WriteDefaultConfigFile(const char[] path)
     WriteFileLine(file, "        \"radius\"            \"478.0\"       // 50血线（250威力/800半径高斯下）");
     WriteFileLine(file, "        \"safe_dist\"         \"800.0\"       // 物理边缘，界外零自伤（纯远程武器）");
     WriteFileLine(file, "        \"range\"             \"4200.0\"      // 无物理上限（飞到碰墙为止），按地图尺度取，酌情");
-    WriteFileLine(file, "        \"viewmodel\"         \"1\"           // 新加枪+新机瞄，定制雷 v 模在 1 号槽");
     WriteFileLine(file, "    }");
     WriteFileLine(file, "");
     WriteFileLine(file, "    // 范例 3：双插件叠加的原版高爆雷（引信 2.5s × 威力 200 × 半径 400，");
@@ -331,10 +326,6 @@ stock void QG_LoadWeaponProfilesConfig()
                 profile.maxThrowDist = maxDist;
             }
 
-            // 雷 v 模槽位（缺省 0；新加枪定制雷填 1，详见 cfg 注释）
-            int vslot = kv.GetNum("viewmodel", 0);
-            profile.viewmodel = (vslot == 1) ? 1 : 0;
-
             g_hWeaponProfiles.SetArray(classname, profile, sizeof(profile));
 
         } while (kv.GotoNextKey());
@@ -390,25 +381,6 @@ stock bool QG_GetEntityProfile(int weaponEnt, GrenadeProfile profile)
 
     profile.InitDefault(role);
     return true;
-}
-
-/**
- * 查询类名的雷 v 模槽位（mode 2 分流判据；用法见 cfg 注释）
- *
- * @param classname   武器类名（如 weapon_molotov）
- * @return            1=雷 v 模在 1 号槽，0=在 0 号槽（缺省）
- */
-stock int QG_GetGrenadeViewSlot(const char[] classname)
-{
-    if (classname[0] == '\0' || g_hWeaponProfiles == null)
-        return 0;
-
-    GrenadeProfile customProfile;
-    if (g_hWeaponProfiles.GetArray(classname, customProfile, sizeof(customProfile))
-        && customProfile.viewmodel == 1)
-        return 1;
-
-    return 0;
 }
 
 /**

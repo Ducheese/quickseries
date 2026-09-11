@@ -72,40 +72,29 @@ bool TriggerQuickGrenade(int client, int grenadeEnt, bool isHoldCmd)
         SetEntProp(client, Prop_Send, "m_iFOV", Fov[client]);
     }
 
-    // 机瞄/特殊视图模型修复
+    // 机瞄/特殊视图模型修复（viewmodel_fix_mode：0=不干预；1=统统藏 1 号亮 0 号；2=仅原版三雷藏 1 显 0，其他放行）
     int fixMode = QG_ViewModelFixMode();
     if (fixMode != 0 && IsValidViewModelEntity(client, ClientVM3[client][0]) && IsValidViewModelEntity(client, ClientVM3[client][1]))
     {
-        bool showSlot1 = false;
+        bool shouldFix = (fixMode == 1);
         if (fixMode == 2)
         {
-            // 按雷 v 模槽位分流（详见 cfg 注释）；加枪分支只在异常态扶一把，
-            // 正常 hold 态镜像条件不成立直接跳过
-            char grenadeCls[64];
+            char grenadeCls[32];
             GetEntityClassname(grenadeEnt, grenadeCls, sizeof(grenadeCls));
-            showSlot1 = (QG_GetGrenadeViewSlot(grenadeCls) == 1);
+            shouldFix = (StrEqual(grenadeCls, "weapon_hegrenade", false)
+                || StrEqual(grenadeCls, "weapon_flashbang", false)
+                || StrEqual(grenadeCls, "weapon_smokegrenade", false));
         }
 
-        if (!showSlot1)
+        if (shouldFix)
         {
             int fx0 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
             int fx1 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
 
-            if (fx0 == EF_NODRAW && fx1 == 0)
+            if ((fx0 & EF_NODRAW) != 0 && (fx1 & EF_NODRAW) == 0)
             {
                 SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", fx1 | EF_NODRAW);
                 SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", fx0 & ~EF_NODRAW);
-            }
-        }
-        else
-        {
-            int fx1 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
-            int fx0 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
-
-            if (fx1 == EF_NODRAW && fx0 == 0)
-            {
-                SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", fx0 | EF_NODRAW);
-                SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", fx1 & ~EF_NODRAW);
             }
         }
     }

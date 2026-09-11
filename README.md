@@ -88,7 +88,7 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickmelee_back_type` | `2` | 挥刀后切枪（2：切回原武器；1：优先主武器其次副武器；0：保持持刀） |
 | `sm_quickmelee_switch_weapon_time` | `0.4` | 从触发到切回武器的时间间隔（秒） |
 | `sm_quickmelee_forbidden` | `"weapon_minigun"` | 禁用快速近战的武器黑名单 |
-| `sm_quickmelee_fix_viewmodel` | `1` | 挥刀时是否修复双视图模型（0：不干预；1：藏1号亮0号；2：原版刀藏1亮0、加枪刀藏0亮1） |
+| `sm_quickmelee_fix_viewmodel` | `0` | 挥刀时是否修复双视图模型（0：不干预；1：统统藏1号亮0号；2：仅原版刀藏1亮0，其他放行） |
 
 ### `cfg/sourcemod/plugin.quickgrenade.cfg`
 | ConVar | 默认值 | 说明 |
@@ -105,11 +105,10 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 
 | 配置项 | 默认值 | 说明 |
 | :--- | :---: | :--- |
-| `Settings.viewmodel_fix_mode` | `0` | 视图修复：0=不干预（原版/HAN）；1=统一藏1亮0（老加枪/老机瞄）；2=按雷v模槽位分流（新加枪/新机瞄） |
+| `Settings.viewmodel_fix_mode` | `0` | 视图修复：0=不干预（原版/HAN）；1=统统藏1亮0（老加枪/老机瞄）；2=仅原版三雷藏1亮0，加枪等其他类名直接放行（新加枪/新机瞄） |
 | 条目 `role` | `he` | 战术角色：flash 弹药当 HE 使时配 `he`（唯一用途） |
 | 条目 `detonate` | `fuse` | `touch`=触碰即炸（燃烧瓶/RPG 类） |
 | 条目 `safe_dist` / `range` | 缺省 | 安全距离（低于不扔）/理论射程（超出 Bot 放弃）；填 0 等同未配 |
-| 条目 `viewmodel` | `0` | 雷v模槽位，仅 mode 2 有效；新加枪定制雷填 `1` |
 
 BotQuickGrenade 已全量接入画像（HE/烟/闪求解、预筛、HUD 计数），原版服缺省行为见上表。
 

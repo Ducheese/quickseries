@@ -88,7 +88,7 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 | `sm_quickmelee_back_type` | `2` | Weapon to switch back after swing (2: previous weapon, 1: primary then secondary, 0: keep knife) |
 | `sm_quickmelee_switch_weapon_time` | `0.4` | Delay from trigger to weapon switch-back (seconds) |
 | `sm_quickmelee_forbidden` | `"weapon_minigun"` | Blacklist of weapons that block quick melee |
-| `sm_quickmelee_fix_viewmodel` | `1` | Fix dual viewmodels on melee (0: leave alone; 1: hide 1 show 0; 2: stock knife hides 1/shows 0, custom knives hide 0/show 1) |
+| `sm_quickmelee_fix_viewmodel` | `0` | Fix dual viewmodels on melee (0: leave alone; 1: hide 1 show 0 unconditionally; 2: stock knife hides 1 shows 0, others pass through) |
 
 ### `cfg/sourcemod/plugin.quickgrenade.cfg`
 | ConVar | Default | Description |
@@ -105,11 +105,10 @@ F:\Git\cs-source-dev\Ducheese\quickseries\
 
 | Key | Default | Description |
 | :--- | :---: | :--- |
-| `Settings.viewmodel_fix_mode` | `0` | Viewmodel fix: 0=leave alone (stock/HAN); 1=hide 1 show 0 (old guns/sights); 2=split by grenade slot (new guns/sights) |
+| `Settings.viewmodel_fix_mode` | `0` | Viewmodel fix: 0=leave alone (stock/HAN); 1=hide 1 show 0 unconditionally (old guns/sights); 2=stock 3 grenades hide 1 show 0, custom classnames pass through (new guns/sights) |
 | Entry `role` | `he` | Tactical role: set `he` for flash-ammo used as HE (only use case) |
 | Entry `detonate` | `fuse` | `touch`=detonate on touch (molotov/RPG types) |
 | Entry `safe_dist` / `range` | defaults | Safety distance (skip below) / range (Bot gives up beyond); 0 means unset |
-| Entry `viewmodel` | `0` | Grenade viewmodel slot, mode 2 only; New-Weapons customs set `1` |
 
 BotQuickGrenade fully consumes profiles (HE/smoke/flash solving, prescreens, HUD counts); stock-server defaults as above.
 

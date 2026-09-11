@@ -66,41 +66,27 @@ bool PerformQuickMelee(int client)
         SetEntProp(client, Prop_Send, "m_iFOV", Fov[client]);
     }
 
-    // 机瞄/特殊视图模型修复（sm_quickmelee_fix_viewmodel：0=不干预；
-    // 1=统一藏 1 号亮 0 号；2=原版刀藏 1 显 0、加枪刀藏 0 显 1，加枪=类名非 weapon_knife）
+    // 机瞄/特殊视图模型修复（sm_quickmelee_fix_viewmodel：0=不干预；1=统统藏 1 号亮 0 号；2=仅原版刀藏 1 亮 0，其他放行）
     int fixMode = GetConVarInt(cvarFixViewModel);
     if (fixMode != 0 && IsValidViewModelEntity(client, ClientVM3[client][0]) && IsValidViewModelEntity(client, ClientVM3[client][1]))
     {
-        bool showSlot1 = false;
+        bool shouldFix = (fixMode == 1);
         if (fixMode == 2)
         {
-            // 刀的品种少，原版只有 weapon_knife 一个类名，换皮不换槽，直接按类名分流
-            //（雷那边不行：改物理不改类名的原版雷太多，才需要画像字段）
             char meleeCls[32];
             GetEntityClassname(melee, meleeCls, sizeof(meleeCls));
-            showSlot1 = !StrEqual(meleeCls, "weapon_knife", false);
+            shouldFix = StrEqual(meleeCls, "weapon_knife", false);
         }
 
-        if (!showSlot1)
+        if (shouldFix)
         {
             int fx0 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
             int fx1 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
 
-            if (fx0 == EF_NODRAW && fx1 == 0)
+            if ((fx0 & EF_NODRAW) != 0 && (fx1 & EF_NODRAW) == 0)
             {
                 SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", fx1 | EF_NODRAW);
                 SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", fx0 & ~EF_NODRAW);
-            }
-        }
-        else
-        {
-            int fx1 = GetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects");
-            int fx0 = GetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects");
-
-            if (fx1 == EF_NODRAW && fx0 == 0)
-            {
-                SetEntProp(ClientVM3[client][0], Prop_Send, "m_fEffects", fx0 | EF_NODRAW);
-                SetEntProp(ClientVM3[client][1], Prop_Send, "m_fEffects", fx1 & ~EF_NODRAW);
             }
         }
     }
